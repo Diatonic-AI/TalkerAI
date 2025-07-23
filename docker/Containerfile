@@ -1,0 +1,100 @@
+# Containerfile for Talk++ - Podman compatible
+# Multi-stage build optimized for Podman Desktop and Kubernetes deployment
+
+FROM docker.io/rust:1.77-alpine AS builder
+
+# Install build dependencies
+RUN apk add --no-cache \
+    musl-dev \
+    pkgconfig \
+    openssl-dev \
+    openssl-libs-static \
+    git
+
+# Set up workspace
+WORKDIR /app
+
+# Copy dependency manifests first for better layer caching
+COPY Cargo.toml Cargo.lock ./
+COPY compiler/Cargo.toml ./compiler/
+COPY runtime/Cargo.toml ./runtime/
+COPY auth/Cargo.toml ./auth/
+COPY executor/Cargo.toml ./executor/
+COPY simulator/Cargo.toml ./simulator/
+COPY wrappers/Cargo.toml ./wrappers/
+COPY cli/Cargo.toml ./cli/
+COPY api-server/Cargo.toml ./api-server/
+COPY frontend-server/Cargo.toml ./frontend-server/
+
+# Create dummy source files and build dependencies
+RUN mkdir -p compiler/src runtime/src auth/src executor/src simulator/src wrappers/src cli/src api-server/src frontend-server/src && \
+    echo "fn main() {}" > compiler/src/main.rs && \
+    echo "fn main() {}" > runtime/src/main.rs && \
+    echo "fn main() {}" > auth/src/main.rs && \
+    echo "fn main() {}" > executor/src/main.rs && \
+    echo "fn main() {}" > simulator/src/main.rs && \
+    echo "fn main() {}" > wrappers/src/main.rs && \
+    echo "fn main() {}" > cli/src/main.rs && \
+    echo "fn main() {}" > api-server/src/main.rs && \
+    echo "fn main() {}" > frontend-server/src/main.rs && \
+    echo "pub fn main() {}" > compiler/src/lib.rs && \
+    echo "pub fn main() {}" > runtime/src/lib.rs && \
+    echo "pub fn main() {}" > auth/src/lib.rs && \
+    echo "pub fn main() {}" > executor/src/lib.rs && \
+    echo "pub fn main() {}" > simulator/src/lib.rs && \
+    echo "pub fn main() {}" > wrappers/src/lib.rs && \
+    cargo build --release && \
+    rm -rf */src
+
+# Copy actual source code
+COPY . .
+
+# Build the application
+RUN cargo build --release
+
+# Runtime stage - minimal Alpine
+FROM docker.io/alpine:3.18
+
+# Install runtime dependencies
+RUN apk add --no-cache \
+    ca-certificates \
+    python3 \
+    py3-pip \
+    nodejs \
+    npm \
+    bash \
+    curl \
+    jq \
+    postgresql-client \
+    redis
+
+# Create non-root user
+RUN addgroup -g 1001 -S talkpp && \
+    adduser -S talkpp -u 1001 -G talkpp
+
+# Create application directories with proper permissions
+RUN mkdir -p /app/bin /app/functions /app/logs /app/config /app/examples && \
+    chown -R talkpp:talkpp /app
+
+# Copy binaries from builder stage
+COPY --from=builder --chown=talkpp:talkpp /app/target/release/talkppc /app/bin/
+COPY --from=builder --chown=talkpp:talkpp /app/target/release/talkpprun /app/bin/
+
+# Copy configuration and examples
+COPY --chown=talkpp:talkpp config/ /app/config/
+COPY --chown=talkpp:talkpp examples/ /app/examples/
+
+# Set environment
+ENV PATH="/app/bin:${PATH}" \
+    RUST_LOG=info \
+    RUST_BACKTRACE=1
+
+WORKDIR /app
+USER talkpp
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8080/health || exit 1
+
+EXPOSE 8080
+CMD ["talkppc", "info"] 

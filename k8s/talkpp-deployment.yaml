@@ -1,0 +1,226 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: talkpp-api
+  namespace: talkpp
+  labels:
+    app.kubernetes.io/name: talkpp
+    app.kubernetes.io/component: api
+    app.kubernetes.io/version: "0.2.0"
+spec:
+  replicas: 2
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxUnavailable: 1
+      maxSurge: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: talkpp
+      app.kubernetes.io/component: api
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: talkpp
+        app.kubernetes.io/component: api
+        app.kubernetes.io/version: "0.2.0"
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/port: "8080"
+        prometheus.io/path: "/metrics"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        fsGroup: 1001
+      serviceAccountName: talkpp-api
+      containers:
+      - name: talkpp-api
+        image: localhost/talkpp:latest  # Built with Podman
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8080
+          name: http
+          protocol: TCP
+        env:
+        # Configuration from ConfigMap
+        - name: SERVER_PORT
+          valueFrom:
+            configMapKeyRef:
+              name: talkpp-config
+              key: server.port
+        - name: RUST_LOG
+          valueFrom:
+            configMapKeyRef:
+              name: talkpp-config
+              key: rust.log
+        - name: CORS_ORIGIN
+          valueFrom:
+            configMapKeyRef:
+              name: talkpp-config
+              key: cors.origin
+        
+        # Database configuration
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: talkpp-secrets
+              key: database-url
+        
+        # Redis configuration
+        - name: REDIS_URL
+          value: "redis://redis:6379"
+        
+        # JWT configuration
+        - name: JWT_SECRET
+          valueFrom:
+            secretKeyRef:
+              name: talkpp-secrets
+              key: jwt-secret
+        
+        # Service API keys
+        - name: SENDGRID_API_KEY
+          valueFrom:
+            secretKeyRef:
+              name: talkpp-secrets
+              key: sendgrid-api-key
+              optional: true
+        - name: SENDGRID_FROM_EMAIL
+          valueFrom:
+            secretKeyRef:
+              name: talkpp-secrets
+              key: sendgrid-from-email
+              optional: true
+        - name: TWILIO_ACCOUNT_SID
+          valueFrom:
+            secretKeyRef:
+              name: talkpp-secrets
+              key: twilio-account-sid
+              optional: true
+        - name: TWILIO_AUTH_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: talkpp-secrets
+              key: twilio-auth-token
+              optional: true
+        - name: TWILIO_FROM_NUMBER
+          valueFrom:
+            secretKeyRef:
+              name: talkpp-secrets
+              key: twilio-from-number
+              optional: true
+        
+        # Feature flags
+        - name: ENABLE_MOCK_SERVICES
+          valueFrom:
+            configMapKeyRef:
+              name: talkpp-config
+              key: services.mock.enabled
+        
+        volumeMounts:
+        - name: examples
+          mountPath: /app/examples
+          readOnly: true
+        - name: logs
+          mountPath: /app/logs
+        
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 30
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
+        
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: http
+          initialDelaySeconds: 5
+          periodSeconds: 5
+          timeoutSeconds: 3
+          successThreshold: 1
+          failureThreshold: 3
+        
+        startupProbe:
+          httpGet:
+            path: /health
+            port: http
+          initialDelaySeconds: 15
+          periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 30
+      
+      volumes:
+      - name: examples
+        configMap:
+          name: talkpp-examples
+      - name: logs
+        emptyDir: {}
+      
+      # Wait for dependencies
+      initContainers:
+      - name: wait-for-postgresql
+        image: docker.io/busybox:1.35
+        command:
+        - sh
+        - -c
+        - |
+          echo "Waiting for PostgreSQL..."
+          until nc -z postgresql 5432; do
+            echo "PostgreSQL is unavailable - sleeping"
+            sleep 2
+          done
+          echo "PostgreSQL is up - executing command"
+      - name: wait-for-redis
+        image: docker.io/busybox:1.35
+        command:
+        - sh
+        - -c
+        - |
+          echo "Waiting for Redis..."
+          until nc -z redis 6379; do
+            echo "Redis is unavailable - sleeping"
+            sleep 2
+          done
+          echo "Redis is up - executing command"
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: talkpp-api
+  namespace: talkpp
+  labels:
+    app.kubernetes.io/name: talkpp
+    app.kubernetes.io/component: api
+spec:
+  type: ClusterIP
+  ports:
+  - port: 8080
+    targetPort: http
+    protocol: TCP
+    name: http
+  selector:
+    app.kubernetes.io/name: talkpp
+    app.kubernetes.io/component: api
+
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: talkpp-api
+  namespace: talkpp
+  labels:
+    app.kubernetes.io/name: talkpp
+    app.kubernetes.io/component: api
+automountServiceAccountToken: false 

@@ -1,0 +1,132 @@
+# podman-compose.yml - Local development with Podman
+# Use with: podman-compose up -d
+
+version: '3.8'
+
+services:
+  talkpp-api:
+    build:
+      context: .
+      dockerfile: docker/Containerfile
+    image: localhost/talkpp:latest
+    container_name: talkpp-api
+    ports:
+      - "8080:8080"
+    environment:
+      - RUST_LOG=debug
+      - DATABASE_URL=postgresql://talkpp:password@postgres:5432/talkpp
+      - REDIS_URL=redis://redis:6379
+      - JWT_SECRET=dev-jwt-secret-change-in-production
+      - CORS_ORIGIN=*
+      - ENABLE_MOCK_SERVICES=true
+      - SERVER_PORT=8080
+      # Service API keys (optional for development)
+      - SENDGRID_API_KEY=${SENDGRID_API_KEY:-}
+      - SENDGRID_FROM_EMAIL=${SENDGRID_FROM_EMAIL:-noreply@talkpp.dev}
+      - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID:-}
+      - TWILIO_AUTH_TOKEN=${TWILIO_AUTH_TOKEN:-}
+      - TWILIO_FROM_NUMBER=${TWILIO_FROM_NUMBER:-}
+    volumes:
+      - ./examples:/app/examples:ro,Z
+      - ./logs:/app/logs:Z
+      - ./config:/app/config:ro,Z
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - talkpp-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  postgres:
+    image: docker.io/postgres:15-alpine
+    container_name: talkpp-postgres
+    environment:
+      - POSTGRES_DB=talkpp
+      - POSTGRES_USER=talkpp
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_INITDB_ARGS=--auth-host=scram-sha-256
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data:Z
+      - ./docker/init.sql:/docker-entrypoint-initdb.d/init.sql:ro,Z
+    networks:
+      - talkpp-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U talkpp -d talkpp"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+
+  redis:
+    image: docker.io/redis:7-alpine
+    container_name: talkpp-redis
+    command: redis-server --appendonly yes --maxmemory 100mb --maxmemory-policy allkeys-lru
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data:Z
+    networks:
+      - talkpp-network
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  # Development tools
+  pgadmin:
+    image: docker.io/dpage/pgadmin4:latest
+    container_name: talkpp-pgadmin
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=admin@talkpp.dev
+      - PGADMIN_DEFAULT_PASSWORD=admin
+      - PGADMIN_CONFIG_SERVER_MODE=False
+      - PGADMIN_CONFIG_MASTER_PASSWORD_REQUIRED=False
+    ports:
+      - "8081:80"
+    volumes:
+      - pgadmin_data:/var/lib/pgadmin:Z
+    depends_on:
+      - postgres
+    networks:
+      - talkpp-network
+    restart: unless-stopped
+
+  # Redis CLI for debugging
+  redis-cli:
+    image: docker.io/redis:7-alpine
+    container_name: talkpp-redis-cli
+    command: tail -f /dev/null  # Keep container running
+    depends_on:
+      - redis
+    networks:
+      - talkpp-network
+    profiles:
+      - debug
+
+volumes:
+  postgres_data:
+    driver: local
+  redis_data:
+    driver: local
+  pgladmin_data:
+    driver: local
+
+networks:
+  talkpp-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16 

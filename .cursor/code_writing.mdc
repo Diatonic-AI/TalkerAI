@@ -1,132 +1,108 @@
----
-alwaysApply: false
----
-- Use functional components and hooks for state management
-- Leverage React's Context API for global state management
-- Optimize performance with React.memo and useMemo
-- Implement PropTypes or TypeScript for type checking
-- Use error boundaries to catch JavaScript errors in components
+# Talk++ Multi-Language Development Guidelines
+
+## Rust Development (Primary Language)
+- Use `Result<T, E>` for error handling, never panic in production code
+- Prefer `&str` over `String` for function parameters when possible
+- Use `#[derive(Debug, Clone, Serialize, Deserialize)]` for data structures
+- Implement `Default` trait for configuration structs
+- Use `anyhow::Result` for application errors, `thiserror::Error` for library errors
+- Prefer async/await over blocking operations
+- Use `tracing` for structured logging, not `println!`
+- Follow Rust naming conventions: snake_case for variables/functions, PascalCase for types
+
+## Talk++ DSL Development
+- Keep DSL syntax natural and English-like
+- Use clear keywords: `if`, `then`, `else`, `when`, `using`, `with`
+- Support both singular and plural action verbs (send/sends, store/stores)
+- Validate DSL syntax early with comprehensive error messages
+- Provide line/column information in all error messages
+- Support comments in DSL files using `//` syntax
+
+## Compiler Architecture
+- Separate lexing, parsing, and code generation phases clearly
+- Use `logos` for tokenization with proper error handling
+- Build recursive descent parser with clear error recovery
+- Generate clean, idiomatic code for target languages
+- Include debugging information in generated code when in debug mode
+- Validate generated code syntax before output
+
+## Multi-Language Code Generation
+- **Rust**: Generate async functions with proper error handling
+- **Python**: Use type hints and async/await patterns
+- **JavaScript**: Generate modern ES6+ with proper error handling  
+- **TypeScript**: Include full type definitions and interfaces
+- **Bash**: Use set -euo pipefail and proper error checking
+- Always include appropriate imports/dependencies for target language
+- Generate consistent function signatures across languages
+
+## Service Integration Patterns
+- Use builder pattern for service configurations
+- Implement mock/dry-run modes for all external services
+- Provide clear error messages for service failures
+- Support environment variable configuration
+- Log all external service calls with structured data
+
+## CLI Development
+- Use `clap` with derive macros for argument parsing
+- Provide colored output with `colored` crate
+- Include progress indicators for long operations
+- Support both verbose and quiet modes
+- Always validate input files before processing
+
+## Testing & Validation
+- Write unit tests for lexer, parser, and code generator separately
+- Include integration tests with real DSL examples
+- Test error handling paths with invalid input
+- Benchmark parser performance with criterion
+- Test generated code compilation in target languages
+
+## Error Handling Standards
+```rust
+// Good: Specific error types with context
+#[derive(Error, Debug)]
+pub enum CompilerError {
+    #[error("Parse error at line {line}, column {col}: {msg}")]
+    ParseError { line: usize, col: usize, msg: String },
+}
+
+// Good: Propagate errors with context
+fn compile_source(source: &str) -> Result<String, CompilerError> {
+    let tokens = tokenize(source)
+        .map_err(|e| CompilerError::LexError { 
+            position: e.position, 
+            message: e.to_string() 
+        })?;
+    // ...
+}
+```
+
+## Async/Await Patterns
+```rust
+// Good: Proper async function design
+pub async fn execute_function(
+    &self, 
+    function_id: Uuid, 
+    event: Event
+) -> Result<Response> {
+    tracing::info!("Executing function: {}", function_id);
+    
+    let result = self.runtime
+        .execute(function_id, event)
+        .await
+        .map_err(|e| anyhow!("Execution failed: {}", e))?;
+        
+    Ok(result)
+}
+```
+
+## Documentation Standards
+- Use `///` doc comments for public APIs
+- Include examples in doc comments where helpful
+- Document all public structs and their fields
+- Explain DSL syntax in module-level docs
+- Keep README.md updated with current features
 
 ---
-name: redux-best-practices.mdc
-description: Best practices for Redux state management
-globs: **/*.{ts,tsx,js,jsx}
----
 
-- Use Redux Toolkit for simplified store setup and reducers
-- Normalize state shape to avoid deeply nested structures
-- Use selectors for accessing state to improve performance
-- Implement middleware for side effects (e.g., redux-thunk)
-- Keep actions and reducers pure and predictable
-
----
-name: nextjs-best-practices.mdc
-description: Best practices for Next.js applications and routing
-globs: **/*.{ts,tsx}
----
-
-- Use the App Router for better performance
-- Implement proper error boundaries
-- Use proper data fetching patterns with suspense
-- Optimize images with the Next.js Image component
-- Utilize static site generation (SSG) and server-side rendering (SSR) effectively
-
----
-name: typescript-best-practices.mdc 
-description: TypeScript coding standards and type safety guidelines
-globs: **/*.{ts,tsx}
----
-
-- Use strict null checks
-- Prefer interface over type for object shapes
-- Use type guards and assertions for better type safety
-- Implement proper type inference to reduce redundancy
-- Keep types organized in separate files or folders
-
----
-name: tailwindcss-best-practices.mdc
-description: Best practices for styling with Tailwind CSS
-globs: **/*.{ts,tsx,css}
----
-
-- Use utility-first classes for rapid styling
-- Create custom components for reusable styles
-- Leverage responsive design features of Tailwind
-- Use JIT mode for faster build times and on-demand styles
-- Maintain a consistent design system with Tailwind's configuration
-
----
-name: jest-best-practices.mdc
-description: Best practices for testing with Jest
-globs: **/*.{ts,tsx,js,jsx}
----
-
-- Write unit tests for all components and functions
-- Use snapshot testing for React components
-- Mock external dependencies to isolate tests
-- Organize tests in a dedicated folder structure
-- Use descriptive test names for clarity
-
----
-name: eslint-best-practices.mdc
-description: Best practices for code linting with ESLint
-globs: **/*.{ts,tsx,js,jsx}
----
-
-- Use a consistent configuration across the project
-- Enable TypeScript support with the appropriate parser
-- Set up rules for code style and best practices
-- Integrate ESLint with your IDE for real-time feedback
-- Regularly update dependencies to leverage new rules and features
-
----
-name: jest-best-practices.mdc
-description: Best practices for testing with Jest
-globs: **/*.{ts,tsx,js,jsx}
----
-
-- Write unit tests for all components and functions
-- Use snapshot testing for React components
-- Mock external dependencies to isolate tests
-- Organize tests in a dedicated folder structure
-- Use descriptive test names for clarity
-
----
-name: axios-best-practices.mdc
-description: Best practices for making HTTP requests with Axios
-globs: **/*.{ts,tsx,js,jsx}
----
-
-- Create an Axios instance for centralized configuration
-- Use interceptors for request and response handling
-- Handle errors gracefully with try/catch blocks
-- Use async/await for cleaner asynchronous code
-- Validate responses and handle unexpected data formats
-
----
-name: express-best-practices.mdc
-description: Best practices for building APIs with Express
-globs: **/*.{ts,tsx,js,jsx}
----
-
-- Use middleware for modular and reusable code
-- Implement proper error handling middleware
-- Validate and sanitize user inputs with libraries like Joi
-- Use environment variables for configuration
-- Structure routes logically and keep controllers thin
-
----
-name: mongodb-best-practices.mdc
-description: Best practices for using MongoDB with Node.js
-globs: **/*.{ts,tsx,js,jsx}
----
-
-- Use Mongoose for schema validation and modeling
-- Implement proper indexing for performance optimization
-- Use transactions for multi-document operations
-- Validate inputs before database operations
-- Regularly back up your database and monitor performance
-
---- 
 
 Feel free to adjust the globs and practices based on your specific project needs!
