@@ -1,0 +1,75 @@
+---
+description: Best practices for project structure, file organization, and path management across all projects
+globs: 
+alwaysApply: true
+---
+
+# Navigation & Path Management
+
+## Project Structure Standards
+```
+project-root/
+├── .cursor/              # Development rulesets
+├── .git/                 # Version control
+├── .gitignore           # Git ignore patterns
+├── README.md            # Project documentation
+├── requirements.txt     # Dependencies (Python)
+├── package.json         # Dependencies (Node.js)
+├── src/                 # Source code
+│   ├── main/            # Main application code
+│   ├── test/            # Test files
+│   └── utils/           # Utility functions
+├── docs/                # Documentation
+├── config/              # Configuration files
+├── scripts/             # Build/deployment scripts
+├── assets/              # Static assets
+└── build/               # Build output (git-ignored)
+```
+
+## Path Navigation Best Practices
+- Use relative paths within the project
+- Avoid hardcoded absolute paths
+- Use environment variables for external paths
+- Follow OS-specific path conventions
+- Use path joining functions (os.path.join, path.join(), etc.)
+
+## File Organization
+- **Group by feature** rather than file type
+- **Keep related files together**
+- **Use meaningful directory names**
+- **Limit nesting depth** (max 4-5 levels)
+- **Separate concerns** (business logic, UI, data access)
+
+## Common Directory Patterns
+- `/src` or `/lib` - Main source code
+- `/test` or `/tests` - Test files
+- `/docs` - Documentation
+- `/config` - Configuration files
+- `/assets` or `/static` - Static resources
+- `/build` or `/dist` - Build outputs
+- `/scripts` - Automation scripts
+- `/tools` - Development tools
+
+## Navigation Commands
+```bash
+# Project navigation aliases
+alias root='cd $(git rev-parse --show-toplevel)'
+alias src='cd src'
+alias tests='cd tests'
+alias docs='cd docs'
+alias configs='cd config'
+
+# Quick file finding
+find . -name "*.py" -type f | head -10
+grep -r "function_name" src/
+locate filename
+```
+
+## Path Management Tips
+- Use `.gitignore` for build artifacts and temporary files
+- Create symbolic links for frequently accessed directories
+- Use IDE bookmarks for important locations
+- Maintain a consistent project structure across all projects
+- Document any non-standard directory purposes
+
+---

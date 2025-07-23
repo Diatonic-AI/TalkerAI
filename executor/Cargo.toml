@@ -1,0 +1,28 @@
+[package]
+name = "talkpp-executor"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Talk++ function executor with polyglot runtime support"
+
+[dependencies]
+# Workspace dependencies
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+
+# Container runtime
+wasmtime = { workspace = true }
+containerd-client = { workspace = true }
+
+# Additional executor dependencies
+tempfile = { workspace = true }
+which = "5.0"
+
+# Local crate dependencies
+talkpp-wrappers = { path = "../wrappers" } 

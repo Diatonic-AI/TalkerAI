@@ -1,0 +1,24 @@
+[package]
+name = "talkpp-simulator"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Talk++ dry-run simulator and testing engine"
+
+[dependencies]
+# Workspace dependencies
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+
+# Additional dependencies
+tempfile = { workspace = true }
+
+# Local crate dependencies
+talkpp-compiler = { path = "../compiler" }
+talkpp-executor = { path = "../executor" } 

@@ -1,0 +1,26 @@
+---
+description: Guidelines for managing projects in a consistent manner across all teams
+globs: 
+    alwaysApply: true
+---
+
+# Project Management Guidelines
+
+- Define clear objectives for each project.
+- Establish milestone deadlines and deliverables.
+- Use version control (Git) for tracking changes.
+- Maintain updated documentation.
+- Utilize project management tools (e.g., Jira, Trello) for task tracking.
+
+## Branch Strategy
+
+- **master**: Production-ready code only.
+- **main**: Pre-production code, final quality checks.
+- **stage**: Staging environment.
+- **test**: Testing phase.
+- **dev**: Active development.
+- **feat**: Feature branches.
+- **stable**: Stable releases.
+
+---
+

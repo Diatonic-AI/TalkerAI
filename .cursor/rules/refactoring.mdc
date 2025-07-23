@@ -1,0 +1,88 @@
+---
+description: Guidelines for safe and effective code refactoring to improve code quality without breaking functionality
+globs: 
+alwaysApply: true
+---
+
+# Refactoring Guidelines
+
+## When to Refactor
+- Code is difficult to understand or maintain
+- Functions are too long or complex
+- Code duplication exists (DRY principle violation)
+- Performance issues are identified
+- Adding new features becomes difficult
+- Code smells are present (long parameter lists, large classes, etc.)
+
+## Refactoring Safety Rules
+1. **Have Tests**: Ensure comprehensive test coverage before refactoring
+2. **Small Steps**: Make incremental changes, not wholesale rewrites
+3. **Commit Often**: Save progress frequently with descriptive commit messages
+4. **One Change at a Time**: Don't mix refactoring with new features
+5. **Validate Each Step**: Run tests after each refactoring step
+
+## Common Refactoring Techniques
+
+### Extract Method
+```python
+# Before
+def process_order(order):
+    # validate order
+    if not order.items:
+        raise ValueError("Empty order")
+    # calculate total
+    total = sum(item.price * item.quantity for item in order.items)
+    # apply discount
+    if order.customer.is_premium:
+        total *= 0.9
+    return total
+
+# After  
+def process_order(order):
+    validate_order(order)
+    total = calculate_total(order)
+    return apply_discount(total, order.customer)
+```
+
+### Extract Variable
+```python
+# Before
+if (user.age >= 18 and user.has_license and not user.is_suspended):
+    allow_access()
+
+# After
+is_eligible = user.age >= 18 and user.has_license and not user.is_suspended
+if is_eligible:
+    allow_access()
+```
+
+### Replace Magic Numbers
+```python
+# Before
+if temperature > 32:
+    state = "liquid"
+
+# After
+FREEZING_POINT = 32
+if temperature > FREEZING_POINT:
+    state = "liquid"
+```
+
+## Refactoring Checklist
+- [ ] All tests pass before starting
+- [ ] Identify specific code smell or issue
+- [ ] Plan refactoring approach
+- [ ] Make small, incremental changes
+- [ ] Run tests after each change
+- [ ] Update documentation if needed
+- [ ] Review with team before merging
+
+## Code Smells to Address
+- **Long Methods**: Break into smaller functions
+- **Large Classes**: Split into focused classes
+- **Duplicate Code**: Extract common functionality
+- **Long Parameter Lists**: Use objects or builders
+- **Dead Code**: Remove unused functions/variables
+- **Comments Explaining Code**: Refactor code to be self-explanatory
+
+---

@@ -1,0 +1,79 @@
+version: '3.8'
+
+services:
+  talkpp-api:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - RUST_LOG=info
+      - DATABASE_URL=postgresql://talkpp:password@postgres:5432/talkpp
+      - REDIS_URL=redis://redis:6379
+    depends_on:
+      - postgres
+      - redis
+    volumes:
+      - ../logs:/app/logs
+      - ../examples:/app/examples:ro
+    networks:
+      - talkpp-network
+
+  talkpp-frontend:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    command: ["talkpp-frontend-server"]
+    ports:
+      - "3000:3000"
+    environment:
+      - API_URL=http://talkpp-api:8080
+    depends_on:
+      - talkpp-api
+    networks:
+      - talkpp-network
+
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_DB=talkpp
+      - POSTGRES_USER=talkpp
+      - POSTGRES_PASSWORD=password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - talkpp-network
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - talkpp-network
+
+  # Development tools
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=admin@talkpp.dev
+      - PGADMIN_DEFAULT_PASSWORD=admin
+    ports:
+      - "8081:80"
+    depends_on:
+      - postgres
+    networks:
+      - talkpp-network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  talkpp-network:
+    driver: bridge 

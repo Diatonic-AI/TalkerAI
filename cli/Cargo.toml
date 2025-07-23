@@ -1,0 +1,34 @@
+[package]
+name = "talkpp-cli"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Talk++ CLI tools (talkppc, talkpprun)"
+
+[[bin]]
+name = "talkppc"
+path = "src/talkppc.rs"
+
+[[bin]]
+name = "talkpprun"
+path = "src/talkpprun.rs"
+
+[dependencies]
+# Workspace dependencies
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+tracing = { workspace = true }
+tracing-subscriber = { workspace = true }
+
+# CLI dependencies
+clap = { version = "4.0", features = ["derive"] }
+colored = "2.0"
+indicatif = "0.17"
+
+# Local crate dependencies
+talkpp-compiler = { path = "../compiler" }
+talkpp-runtime = { path = "../runtime" }
+talkpp-simulator = { path = "../simulator" } 

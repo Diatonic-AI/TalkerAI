@@ -1,0 +1,44 @@
+---
+description: Best practices for writing clean, maintainable, and secure code across all projects
+globs: 
+    alwaysApply: true
+---
+
+# Code Writing Standards
+
+## General Principles
+- Write clean, readable, and maintainable code
+- Follow DRY (Don't Repeat Yourself) principle
+- Use meaningful variable and function names
+- Keep functions small and focused (single responsibility)
+- Add comments for complex logic only
+- Use consistent indentation (4 spaces for Python, 2 for JavaScript/JSON)
+
+## Naming Conventions
+- **Variables**: camelCase or snake_case (language-dependent)
+- **Functions**: camelCase or snake_case (language-dependent)
+- **Classes**: PascalCase
+- **Constants**: UPPER_SNAKE_CASE
+- **Files**: snake_case or kebab-case
+
+## Code Structure
+- Organize imports at the top
+- Group related functions together
+- Use proper error handling (try/catch blocks)
+- Validate inputs and sanitize outputs
+- Follow language-specific style guides (PEP8 for Python, ESLint for JavaScript)
+
+## Documentation
+- Write clear docstrings for functions and classes
+- Document API endpoints and parameters
+- Keep README files updated
+- Use inline comments sparingly and meaningfully
+
+## Security Practices
+- Never hardcode secrets or credentials
+- Use environment variables for configuration
+- Validate and sanitize all user inputs
+- Follow OWASP security guidelines
+- Implement proper authentication and authorization
+
+---

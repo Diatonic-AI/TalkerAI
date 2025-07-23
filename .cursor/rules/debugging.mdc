@@ -1,0 +1,56 @@
+---
+description: Comprehensive debugging strategies and best practices for identifying and fixing issues across all projects
+globs: 
+    alwaysApply: true
+---
+
+# Debugging Guidelines
+
+## Debugging Strategy
+1. **Reproduce the Issue**: Create consistent steps to reproduce the bug
+2. **Isolate the Problem**: Narrow down the code section causing the issue
+3. **Use Debugging Tools**: Leverage debuggers, profilers, and logging
+4. **Test Incrementally**: Make small changes and test frequently
+5. **Document Findings**: Keep track of what you've tried and learned
+
+## Debugging Tools
+- **Console/Print Debugging**: Use strategic print statements
+- **IDE Debuggers**: Step through code with breakpoints
+- **Browser DevTools**: For web applications (Network, Console, Elements)
+- **Log Analysis**: Review application and system logs
+- **Profiling Tools**: Identify performance bottlenecks
+
+## Common Debugging Techniques
+- **Rubber Duck Debugging**: Explain your code to someone/something
+- **Binary Search**: Comment out half the code to isolate issues
+- **Logging Levels**: Use DEBUG, INFO, WARN, ERROR appropriately
+- **Unit Testing**: Write tests to verify individual components
+- **Integration Testing**: Test component interactions
+
+## Error Handling Patterns
+```python
+try:
+    # risky operation
+    result = potentially_failing_function()
+except SpecificException as e:
+    # handle specific error
+    logger.error(f"Specific error occurred: {e}")
+except Exception as e:
+    # handle general errors
+    logger.error(f"Unexpected error: {e}")
+    raise  # re-raise if cannot handle
+finally:
+    # cleanup code
+    cleanup_resources()
+```
+
+## Debugging Checklist
+- [ ] Check error messages and stack traces
+- [ ] Verify input data and parameters
+- [ ] Review recent changes (git diff)
+- [ ] Check environment variables and configuration
+- [ ] Validate dependencies and versions
+- [ ] Test in different environments
+- [ ] Review logs at different levels
+
+---

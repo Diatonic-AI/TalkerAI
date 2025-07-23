@@ -1,0 +1,28 @@
+[package]
+name = "talkpp-auth"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Talk++ authentication and authorization module"
+
+[dependencies]
+# Workspace dependencies
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+
+# Authentication dependencies
+jsonwebtoken = { workspace = true }
+oauth2 = { workspace = true }
+sqlx = { workspace = true }
+redis = { workspace = true }
+
+# Additional auth dependencies
+base64 = "0.21"
+ring = "0.17"
+time = "0.3" 

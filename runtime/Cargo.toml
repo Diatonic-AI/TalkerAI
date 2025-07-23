@@ -1,0 +1,28 @@
+[package]
+name = "talkpp-runtime"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+description = "Talk++ runtime execution engine"
+
+[dependencies]
+# Workspace dependencies
+tokio = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+thiserror = { workspace = true }
+tracing = { workspace = true }
+uuid = { workspace = true }
+
+# Runtime dependencies
+wasmtime = { workspace = true }
+containerd-client = { workspace = true }
+
+# Local crate dependencies
+talkpp-compiler = { path = "../compiler" }
+talkpp-auth = { path = "../auth" }
+talkpp-executor = { path = "../executor" }
+talkpp-simulator = { path = "../simulator" }
+talkpp-wrappers = { path = "../wrappers" } 
