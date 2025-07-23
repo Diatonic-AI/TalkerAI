@@ -1,0 +1,29 @@
+[package]
+name = "talkpp-cuda-processor"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+tracing.workspace = true
+async-trait.workspace = true
+
+# CUDA/ML dependencies
+candle-core.workspace = true
+candle-nn.workspace = true
+candle-transformers.workspace = true
+cudarc = { version = "0.9", features = ["cuda-11080", "cublas", "curand", "cufft"] }
+half = "2.3"
+
+# Additional ML dependencies
+tch = "0.14"  # PyTorch bindings
+ort = "1.16"  # ONNX Runtime
+intel-mkl-src = { version = "0.8", features = ["mkl-static-lp64-iomp", "download"] } 

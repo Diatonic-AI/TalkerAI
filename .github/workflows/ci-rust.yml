@@ -1,0 +1,331 @@
+name: 🦀 Rust CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - '**/*.rs'
+      - '**/Cargo.toml'
+      - '**/Cargo.lock'
+      - '.github/workflows/ci-rust.yml'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - '**/*.rs'
+      - '**/Cargo.toml'
+      - '**/Cargo.lock'
+
+env:
+  CARGO_TERM_COLOR: always
+  RUST_BACKTRACE: 1
+
+jobs:
+  security-audit:
+    name: 🔒 Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Cache cargo registry
+        uses: actions/cache@v4
+        with:
+          path: ~/.cargo/registry
+          key: ${{ runner.os }}-cargo-registry-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install cargo-audit
+        run: cargo install cargo-audit
+
+      - name: Security audit
+        run: cargo audit
+
+      - name: Check for known vulnerabilities
+        run: cargo audit --deny warnings
+
+  code-quality:
+    name: 🔍 Code Quality & Linting
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust-version: [1.81.0, stable]
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.rust-version }}
+          components: rustfmt, clippy
+
+      - name: Cache cargo dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target/
+          key: ${{ runner.os }}-cargo-${{ matrix.rust-version }}-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Check code formatting
+        run: cargo fmt --all -- --check
+
+      - name: Run Clippy lints
+        run: cargo clippy --all-targets --all-features -- -D warnings
+
+      - name: Check for unused dependencies
+        run: |
+          cargo install cargo-machete || true
+          cargo machete --with-metadata
+
+  test:
+    name: 🧪 Test Suite
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        rust-version: [1.81.0, stable]
+    
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_USER: test_user
+          POSTGRES_DB: talk_plus_plus_test
+        ports:
+          - 5432:5432
+        options: --health-cmd pg_isready --health-interval 10s --health-timeout 5s --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: --health-cmd "redis-cli ping" --health-interval 10s --health-timeout 5s --health-retries 5
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: ${{ matrix.rust-version }}
+
+      - name: Cache cargo dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target/
+          key: ${{ runner.os }}-cargo-test-${{ matrix.rust-version }}-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libssl-dev pkg-config
+
+      - name: Run unit tests
+        env:
+          DATABASE_URL: postgres://test_user:test_password@localhost:5432/talk_plus_plus_test
+          REDIS_URL: redis://localhost:6379
+        run: cargo test --verbose --all
+
+      - name: Run integration tests
+        env:
+          DATABASE_URL: postgres://test_user:test_password@localhost:5432/talk_plus_plus_test
+          REDIS_URL: redis://localhost:6379
+        run: cargo test --verbose --test integration
+
+      - name: Generate test coverage
+        if: matrix.rust-version == 'stable'
+        run: |
+          cargo install cargo-tarpaulin || true
+          cargo tarpaulin --verbose --all-features --workspace --timeout 120 --out xml
+
+      - name: Upload coverage to Codecov
+        if: matrix.rust-version == 'stable'
+        uses: codecov/codecov-action@v4
+        with:
+          file: cobertura.xml
+          flags: rust-tests
+          name: rust-coverage
+
+  build:
+    name: 🏗️ Build & Package
+    runs-on: ubuntu-latest
+    needs: [security-audit, code-quality, test]
+    strategy:
+      matrix:
+        target:
+          - x86_64-unknown-linux-gnu
+          - aarch64-unknown-linux-gnu
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Cache cargo dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            target/
+          key: ${{ runner.os }}-cargo-build-${{ matrix.target }}-${{ hashFiles('**/Cargo.lock') }}
+
+      - name: Install cross-compilation tools
+        if: matrix.target == 'aarch64-unknown-linux-gnu'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+
+      - name: Build release binary
+        run: |
+          export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=aarch64-linux-gnu-gcc
+          cargo build --release --target ${{ matrix.target }}
+
+      - name: Package binaries
+        run: |
+          mkdir -p artifacts/${{ matrix.target }}
+          cp target/${{ matrix.target }}/release/talk-plus-plus artifacts/${{ matrix.target }}/ || true
+          cp target/${{ matrix.target }}/release/jarvis-core artifacts/${{ matrix.target }}/ || true
+          cp target/${{ matrix.target }}/release/tpp-* artifacts/${{ matrix.target }}/ || true
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: rust-binaries-${{ matrix.target }}
+          path: artifacts/${{ matrix.target }}/
+          retention-days: 30
+
+  container-build:
+    name: 🐳 Container Build & Push
+    runs-on: ubuntu-latest
+    needs: [build]
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/develop')
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: |
+            ghcr.io/${{ github.repository }}/talk-plus-plus
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=sha,prefix={{branch}}-
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push container
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          file: ./docker/Containerfile
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  deploy-dev:
+    name: 🚀 Deploy to Development
+    runs-on: ubuntu-latest
+    needs: [container-build]
+    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+    environment: development
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure HashiCorp Vault
+        uses: hashicorp/vault-action@v3
+        with:
+          url: ${{ secrets.VAULT_URL }}
+          method: jwt
+          role: talk-plus-plus-dev
+          secrets: |
+            secret/data/dev/k8s kubeconfig | KUBE_CONFIG ;
+            secret/data/dev/database url | DATABASE_URL ;
+            secret/data/dev/redis url | REDIS_URL
+
+      - name: Deploy to Kubernetes
+        run: |
+          echo "$KUBE_CONFIG" | base64 -d > kubeconfig
+          export KUBECONFIG=kubeconfig
+          kubectl apply -k k8s/overlays/dev/
+          kubectl rollout status deployment/talk-plus-plus -n talk-plus-plus-dev
+
+      - name: Run health checks
+        run: |
+          export KUBECONFIG=kubeconfig
+          kubectl wait --for=condition=ready pod -l app=talk-plus-plus -n talk-plus-plus-dev --timeout=300s
+
+  deploy-prod:
+    name: 🏭 Deploy to Production
+    runs-on: ubuntu-latest
+    needs: [container-build]
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    environment: production
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure HashiCorp Vault
+        uses: hashicorp/vault-action@v3
+        with:
+          url: ${{ secrets.VAULT_URL }}
+          method: jwt
+          role: talk-plus-plus-prod
+          secrets: |
+            secret/data/prod/k8s kubeconfig | KUBE_CONFIG ;
+            secret/data/prod/database url | DATABASE_URL ;
+            secret/data/prod/redis url | REDIS_URL
+
+      - name: Deploy to Kubernetes
+        run: |
+          echo "$KUBE_CONFIG" | base64 -d > kubeconfig
+          export KUBECONFIG=kubeconfig
+          kubectl apply -k k8s/overlays/production/
+          kubectl rollout status deployment/talk-plus-plus -n talk-plus-plus-prod
+
+      - name: Run production health checks
+        run: |
+          export KUBECONFIG=kubeconfig
+          kubectl wait --for=condition=ready pod -l app=talk-plus-plus -n talk-plus-plus-prod --timeout=300s
+
+      - name: Notify deployment success
+        if: success()
+        run: |
+          echo "✅ Production deployment successful!"
+          # Add notification logic here (Slack, email, etc.)
+
+      - name: Rollback on failure
+        if: failure()
+        run: |
+          export KUBECONFIG=kubeconfig
+          kubectl rollout undo deployment/talk-plus-plus -n talk-plus-plus-prod
+          echo "❌ Production deployment failed - rolled back to previous version" 

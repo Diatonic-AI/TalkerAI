@@ -1,0 +1,282 @@
+.App {
+  @apply min-h-screen bg-background text-foreground;
+  /* Prevent white flash during initial load */
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+}
+
+/* Electron-specific styles */
+.electron-drag {
+  -webkit-app-region: drag;
+}
+
+.electron-no-drag {
+  -webkit-app-region: no-drag;
+}
+
+/* Enhanced animation utilities */
+.animate-in {
+  animation: animate-in 0.3s ease-out;
+}
+
+.animate-out {
+  animation: animate-out 0.2s ease-in;
+}
+
+.animate-fade-in {
+  animation: fade-in 0.2s ease-out;
+}
+
+.animate-slide-in {
+  animation: slide-in 0.3s ease-out;
+}
+
+.animate-scale-in {
+  animation: scale-in 0.2s ease-out;
+}
+
+/* Page transition animations */
+.page-enter {
+  animation: page-enter 0.3s ease-out;
+}
+
+.page-exit {
+  animation: page-exit 0.2s ease-in;
+}
+
+/* Navigation animations */
+.nav-enter {
+  animation: nav-enter 0.2s ease-out;
+}
+
+.nav-exit {
+  animation: nav-exit 0.15s ease-in;
+}
+
+/* Smooth hover effects */
+.hover-lift {
+  transition: all 0.2s ease-in-out;
+}
+
+.hover-lift:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+/* Focus states for accessibility */
+.focus-ring {
+  transition: all 0.2s ease-in-out;
+}
+
+.focus-ring:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+  box-shadow: 0 0 0 4px hsl(var(--ring) / 0.1);
+}
+
+/* Loading states */
+.loading-spinner {
+  animation: spin 1s linear infinite;
+}
+
+.loading-pulse {
+  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Keyframe animations */
+@keyframes animate-in {
+  from {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes animate-out {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes slide-in {
+  from {
+    opacity: 0;
+    transform: translateX(-20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes scale-in {
+  from {
+    opacity: 0;
+    transform: scale(0.95);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes page-exit {
+  from {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateY(-10px);
+  }
+}
+
+@keyframes nav-enter {
+  from {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+@keyframes nav-exit {
+  from {
+    opacity: 1;
+    transform: translateX(0);
+  }
+  to {
+    opacity: 0;
+    transform: translateX(-10px);
+  }
+}
+
+@keyframes spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+
+/* Prevent white flash on page load */
+#root {
+  background-color: hsl(var(--background));
+  min-height: 100vh;
+}
+
+/* Smooth transitions for all interactive elements */
+* {
+  transition-property: color, background-color, border-color, text-decoration-color, fill, stroke, opacity, box-shadow, transform, filter, backdrop-filter;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+  transition-duration: 150ms;
+}
+
+/* Enhanced button transitions */
+button {
+  transition: all 0.2s ease-in-out;
+}
+
+button:hover {
+  transform: translateY(-1px);
+}
+
+button:active {
+  transform: translateY(0);
+}
+
+/* Link transitions */
+a {
+  transition: all 0.2s ease-in-out;
+}
+
+a:hover {
+  transform: translateY(-1px);
+}
+
+/* Card hover effects */
+.card-hover {
+  transition: all 0.3s ease-in-out;
+}
+
+.card-hover:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.15);
+}
+
+/* Navigation item active state */
+.nav-item-active {
+  background: linear-gradient(135deg, hsl(var(--primary)), hsl(var(--primary) / 0.9));
+  box-shadow: 0 2px 8px hsl(var(--primary) / 0.3);
+  transform: translateX(4px);
+}
+
+/* Smooth sidebar transitions */
+.sidebar-transition {
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Content fade transitions */
+.content-fade {
+  transition: opacity 0.2s ease-in-out, transform 0.2s ease-in-out;
+}
+
+.content-fade-enter {
+  opacity: 0;
+  transform: translateY(10px);
+}
+
+.content-fade-enter-active {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.content-fade-exit {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.content-fade-exit-active {
+  opacity: 0;
+  transform: translateY(-10px);
+} 

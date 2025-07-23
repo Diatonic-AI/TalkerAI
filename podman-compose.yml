@@ -121,7 +121,7 @@ volumes:
     driver: local
   redis_data:
     driver: local
-  pgladmin_data:
+  pgadmin_data:
     driver: local
 
 networks:

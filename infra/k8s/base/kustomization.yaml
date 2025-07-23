@@ -1,0 +1,41 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: talk-plus-plus-base
+
+resources:
+  - namespace.yaml
+  - deployment.yaml
+  - service.yaml
+  - configmap.yaml
+  - vault-auth.yaml
+  - rbac.yaml
+  - networkpolicy.yaml
+
+commonLabels:
+  app: talk-plus-plus
+  version: v1.0.0
+
+commonAnnotations:
+  app.kubernetes.io/name: talk-plus-plus
+  app.kubernetes.io/component: ai-middleware
+  app.kubernetes.io/part-of: talk-plus-plus-platform
+
+images:
+  - name: talk-plus-plus
+    newTag: latest
+
+configMapGenerator:
+  - name: app-config
+    literals:
+      - LOG_LEVEL=info
+      - RUST_ENV=production
+      - APP_NAME=talk-plus-plus
+
+secretGenerator:
+  - name: vault-config
+    literals:
+      - VAULT_ADDR=https://vault.talk-plus-plus.com:8200
+      - VAULT_ROLE=talk-plus-plus
+    type: Opaque 

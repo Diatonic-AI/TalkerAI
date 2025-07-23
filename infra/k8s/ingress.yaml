@@ -1,0 +1,125 @@
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: talkpp-ingress
+  namespace: talkpp
+  labels:
+    app.kubernetes.io/name: talkpp
+    app.kubernetes.io/component: ingress
+  annotations:
+    # Nginx ingress controller annotations
+    nginx.ingress.kubernetes.io/rewrite-target: /
+    nginx.ingress.kubernetes.io/ssl-redirect: "true"
+    nginx.ingress.kubernetes.io/force-ssl-redirect: "true"
+    
+    # CORS configuration
+    nginx.ingress.kubernetes.io/enable-cors: "true"
+    nginx.ingress.kubernetes.io/cors-allow-origin: "*"
+    nginx.ingress.kubernetes.io/cors-allow-methods: "GET, POST, PUT, DELETE, OPTIONS"
+    nginx.ingress.kubernetes.io/cors-allow-headers: "Authorization, Content-Type, Accept"
+    
+    # Rate limiting
+    nginx.ingress.kubernetes.io/rate-limit: "100"
+    nginx.ingress.kubernetes.io/rate-limit-window: "1m"
+    
+    # Request size
+    nginx.ingress.kubernetes.io/proxy-body-size: "10m"
+    
+    # Timeouts
+    nginx.ingress.kubernetes.io/proxy-connect-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-send-timeout: "60"
+    nginx.ingress.kubernetes.io/proxy-read-timeout: "60"
+    
+    # Health checks
+    nginx.ingress.kubernetes.io/upstream-keepalive-connections: "32"
+    nginx.ingress.kubernetes.io/upstream-keepalive-requests: "100"
+    
+    # Optional: cert-manager for automatic SSL
+    # cert-manager.io/cluster-issuer: "letsencrypt-prod"
+    
+spec:
+  ingressClassName: nginx
+  
+  # TLS configuration (uncomment if using cert-manager)
+  # tls:
+  # - hosts:
+  #   - talkpp.local
+  #   - api.talkpp.local
+  #   secretName: talkpp-tls
+  
+  rules:
+  # Main API endpoint
+  - host: talkpp.local  # Change to your domain
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: talkpp-api
+            port:
+              number: 8080
+  
+  # API-specific subdomain (optional)
+  - host: api.talkpp.local  # Change to your domain
+    http:
+      paths:
+      - path: /
+        pathType: Prefix
+        backend:
+          service:
+            name: talkpp-api
+            port:
+              number: 8080
+
+---
+# Alternative Ingress for development (NodePort access)
+apiVersion: v1
+kind: Service
+metadata:
+  name: talkpp-api-nodeport
+  namespace: talkpp
+  labels:
+    app.kubernetes.io/name: talkpp
+    app.kubernetes.io/component: api-nodeport
+spec:
+  type: NodePort
+  ports:
+  - port: 8080
+    targetPort: http
+    protocol: TCP
+    name: http
+    nodePort: 30080  # Access via <node-ip>:30080
+  selector:
+    app.kubernetes.io/name: talkpp
+    app.kubernetes.io/component: api
+
+---
+# LoadBalancer service (for cloud environments)
+apiVersion: v1
+kind: Service
+metadata:
+  name: talkpp-api-lb
+  namespace: talkpp
+  labels:
+    app.kubernetes.io/name: talkpp
+    app.kubernetes.io/component: api-loadbalancer
+  annotations:
+    # Cloud-specific annotations
+    service.beta.kubernetes.io/aws-load-balancer-type: "nlb"  # AWS
+    # service.beta.kubernetes.io/azure-load-balancer-internal: "false"  # Azure
+    # cloud.google.com/load-balancer-type: "External"  # GCP
+spec:
+  type: LoadBalancer
+  ports:
+  - port: 80
+    targetPort: http
+    protocol: TCP
+    name: http
+  - port: 443
+    targetPort: http
+    protocol: TCP
+    name: https
+  selector:
+    app.kubernetes.io/name: talkpp
+    app.kubernetes.io/component: api 

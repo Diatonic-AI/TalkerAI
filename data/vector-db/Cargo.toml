@@ -1,0 +1,31 @@
+[package]
+name = "talkpp-vector-db"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+tracing.workspace = true
+async-trait.workspace = true
+
+# Vector database dependencies
+qdrant-client.workspace = true
+fastembed.workspace = true
+
+# Additional ML/AI dependencies
+candle-core.workspace = true
+candle-nn.workspace = true
+candle-transformers.workspace = true
+hf-hub = "0.3"
+tokenizers = "0.15"
+
+# Search and indexing
+tantivy = "0.21" 

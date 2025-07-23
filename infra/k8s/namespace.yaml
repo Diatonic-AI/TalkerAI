@@ -1,0 +1,38 @@
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: talkpp
+  labels:
+    name: talkpp
+    app.kubernetes.io/name: talkpp
+    app.kubernetes.io/component: infrastructure
+---
+apiVersion: v1
+kind: LimitRange
+metadata:
+  name: talkpp-limits
+  namespace: talkpp
+spec:
+  limits:
+  - default:
+      cpu: "500m"
+      memory: "512Mi"
+    defaultRequest:
+      cpu: "100m"
+      memory: "128Mi"
+    type: Container
+---
+apiVersion: v1
+kind: ResourceQuota
+metadata:
+  name: talkpp-quota
+  namespace: talkpp
+spec:
+  hard:
+    requests.cpu: "2"
+    requests.memory: 4Gi
+    limits.cpu: "4"
+    limits.memory: 8Gi
+    pods: "10"
+    services: "5"
+    persistentvolumeclaims: "3" 

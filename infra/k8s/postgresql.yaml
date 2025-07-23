@@ -1,0 +1,213 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgresql-pvc
+  namespace: talkpp
+  labels:
+    app.kubernetes.io/name: postgresql
+    app.kubernetes.io/component: database
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 10Gi
+  storageClassName: standard # Adjust based on your cluster
+
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgresql
+  namespace: talkpp
+  labels:
+    app.kubernetes.io/name: postgresql
+    app.kubernetes.io/component: database
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: postgresql
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: postgresql
+        app.kubernetes.io/component: database
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 999
+        fsGroup: 999
+      containers:
+      - name: postgresql
+        image: docker.io/postgres:15-alpine
+        ports:
+        - containerPort: 5432
+          name: postgresql
+        env:
+        - name: POSTGRES_DB
+          value: "talkpp"
+        - name: POSTGRES_USER
+          valueFrom:
+            secretKeyRef:
+              name: talkpp-secrets
+              key: database-username
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: talkpp-secrets
+              key: database-password
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        volumeMounts:
+        - name: postgresql-storage
+          mountPath: /var/lib/postgresql/data
+        - name: init-scripts
+          mountPath: /docker-entrypoint-initdb.d
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          exec:
+            command:
+            - pg_isready
+            - -U
+            - talkpp
+            - -d
+            - talkpp
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          exec:
+            command:
+            - pg_isready
+            - -U
+            - talkpp
+            - -d
+            - talkpp
+          initialDelaySeconds: 5
+          periodSeconds: 5
+      volumes:
+      - name: postgresql-storage
+        persistentVolumeClaim:
+          claimName: postgresql-pvc
+      - name: init-scripts
+        configMap:
+          name: postgresql-init
+          defaultMode: 0755
+
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgresql
+  namespace: talkpp
+  labels:
+    app.kubernetes.io/name: postgresql
+    app.kubernetes.io/component: database
+spec:
+  type: ClusterIP
+  ports:
+  - port: 5432
+    targetPort: 5432
+    protocol: TCP
+    name: postgresql
+  selector:
+    app.kubernetes.io/name: postgresql
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgresql-init
+  namespace: talkpp
+  labels:
+    app.kubernetes.io/name: postgresql
+    app.kubernetes.io/component: database
+data:
+  01-init.sql: |
+    -- Talk++ Database Schema
+    
+    -- Create extensions
+    CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
+    CREATE EXTENSION IF NOT EXISTS "pgcrypto";
+    
+    -- Users table
+    CREATE TABLE IF NOT EXISTS users (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        email VARCHAR(255) UNIQUE NOT NULL,
+        password_hash VARCHAR(255) NOT NULL,
+        full_name VARCHAR(255),
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        is_active BOOLEAN DEFAULT true
+    );
+    
+    -- Functions table
+    CREATE TABLE IF NOT EXISTS functions (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+        name VARCHAR(255) NOT NULL,
+        description TEXT,
+        source_code TEXT NOT NULL,
+        compiled_code TEXT,
+        target_language VARCHAR(50) NOT NULL DEFAULT 'rust',
+        version VARCHAR(20) DEFAULT '1.0.0',
+        status VARCHAR(50) DEFAULT 'draft',
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        UNIQUE(user_id, name)
+    );
+    
+    -- Function executions table
+    CREATE TABLE IF NOT EXISTS executions (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        function_id UUID REFERENCES functions(id) ON DELETE CASCADE,
+        event_data JSONB,
+        response_data JSONB,
+        status VARCHAR(50) DEFAULT 'pending',
+        started_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        completed_at TIMESTAMP WITH TIME ZONE,
+        execution_time_ms INTEGER,
+        error_message TEXT
+    );
+    
+    -- Auth tokens table
+    CREATE TABLE IF NOT EXISTS auth_tokens (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+        token_hash VARCHAR(255) NOT NULL,
+        token_type VARCHAR(50) DEFAULT 'bearer',
+        expires_at TIMESTAMP WITH TIME ZONE,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        last_used_at TIMESTAMP WITH TIME ZONE
+    );
+    
+    -- Secrets table (encrypted)
+    CREATE TABLE IF NOT EXISTS secrets (
+        id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+        user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+        name VARCHAR(255) NOT NULL,
+        encrypted_value TEXT NOT NULL,
+        created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+        UNIQUE(user_id, name)
+    );
+    
+    -- Create indexes
+    CREATE INDEX IF NOT EXISTS idx_functions_user_id ON functions(user_id);
+    CREATE INDEX IF NOT EXISTS idx_executions_function_id ON executions(function_id);
+    CREATE INDEX IF NOT EXISTS idx_executions_started_at ON executions(started_at);
+    CREATE INDEX IF NOT EXISTS idx_auth_tokens_user_id ON auth_tokens(user_id);
+    CREATE INDEX IF NOT EXISTS idx_secrets_user_id ON secrets(user_id);
+    
+    -- Sample data (optional)
+    INSERT INTO users (email, password_hash, full_name) VALUES 
+    ('demo@talkpp.dev', crypt('demo123', gen_salt('bf')), 'Demo User')
+    ON CONFLICT (email) DO NOTHING; 

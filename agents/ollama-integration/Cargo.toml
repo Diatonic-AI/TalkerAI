@@ -1,0 +1,23 @@
+[package]
+name = "talkpp-ollama-integration"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+tracing.workspace = true
+reqwest.workspace = true
+futures.workspace = true
+async-trait.workspace = true
+
+# Ollama-specific dependencies
+ollama-rs = "0.1"
+tokio-stream = "0.1" 

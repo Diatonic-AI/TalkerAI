@@ -1,0 +1,391 @@
+# Security Rules and Best Practices
+
+## Secret Management
+
+### Never Hardcode Secrets
+```rust
+// Bad: Hardcoded API key
+const API_KEY: &str = "sk-1234567890abcdef";
+
+// Good: Environment variable or Vault
+let api_key = std::env::var("API_KEY")
+    .or_else(|_| vault_client.get_secret("api-keys/openai"))
+    .expect("API key not found");
+```
+
+### Environment Variables
+- Use `.env` files for development only
+- Never commit `.env` files to version control
+- Use HashiCorp Vault for production secrets
+- Implement secret rotation policies
+
+## Input Validation and Sanitization
+
+### Always Validate Input
+```rust
+// Good: Input validation
+pub async fn process_intent(raw_intent: &str) -> Result<Intent> {
+    if raw_intent.is_empty() {
+        return Err(anyhow!("Intent cannot be empty"));
+    }
+    
+    if raw_intent.len() > 10000 {
+        return Err(anyhow!("Intent too long"));
+    }
+    
+    // Sanitize HTML/script tags if needed
+    let sanitized = sanitize_input(raw_intent);
+    // ... rest of processing
+}
+
+fn sanitize_input(input: &str) -> String {
+    // Remove potentially dangerous characters
+    input
+        .replace("<script", "&lt;script")
+        .replace("javascript:", "")
+        .trim()
+        .to_string()
+}
+```
+
+### SQL Injection Prevention
+```rust
+// Good: Using parameterized queries
+sqlx::query!(
+    "SELECT * FROM users WHERE id = $1 AND email = $2",
+    user_id,
+    email
+)
+.fetch_one(&pool)
+.await?;
+
+// Bad: String concatenation
+// let query = format!("SELECT * FROM users WHERE id = {}", user_id);
+```
+
+## Authentication and Authorization
+
+### JWT Token Handling
+```rust
+// Good: Secure JWT handling
+pub struct JwtClaims {
+    pub sub: String,          // Subject (user ID)
+    pub exp: usize,          // Expiration time
+    pub iat: usize,          // Issued at
+    pub aud: String,         // Audience
+    pub iss: String,         // Issuer
+    pub roles: Vec<String>,  // User roles
+}
+
+// Implement proper token validation
+pub fn validate_jwt(token: &str) -> Result<JwtClaims> {
+    let key = get_jwt_secret()?;
+    let validation = Validation::new(Algorithm::HS256);
+    
+    match decode::<JwtClaims>(token, &key, &validation) {
+        Ok(token_data) => {
+            // Check if token is expired
+            let now = SystemTime::now()
+                .duration_since(UNIX_EPOCH)?
+                .as_secs() as usize;
+                
+            if token_data.claims.exp < now {
+                return Err(anyhow!("Token expired"));
+            }
+            
+            Ok(token_data.claims)
+        }
+        Err(e) => Err(anyhow!("Invalid token: {}", e))
+    }
+}
+```
+
+### Role-Based Access Control
+```rust
+// Good: Implement proper RBAC
+#[derive(Debug, PartialEq)]
+pub enum Permission {
+    ReadIntents,
+    WriteIntents,
+    ExecuteTasks,
+    ManageUsers,
+    AdminAccess,
+}
+
+#[derive(Debug)]
+pub struct Role {
+    pub name: String,
+    pub permissions: Vec<Permission>,
+}
+
+pub fn check_permission(user_roles: &[String], required_permission: Permission) -> bool {
+    let roles = get_roles_for_user(user_roles);
+    roles.iter().any(|role| role.permissions.contains(&required_permission))
+}
+
+// Use in handlers
+pub async fn execute_task(
+    claims: JwtClaims,
+    task_id: Uuid
+) -> Result<TaskResult> {
+    if !check_permission(&claims.roles, Permission::ExecuteTasks) {
+        return Err(anyhow!("Insufficient permissions"));
+    }
+    // ... execute task
+}
+```
+
+## Secure Communication
+
+### TLS/HTTPS Enforcement
+```rust
+// Good: Force HTTPS in production
+pub fn configure_server() -> HttpServer<AppFactory> {
+    let tls_config = if is_production() {
+        Some(load_tls_config()?)
+    } else {
+        None
+    };
+    
+    let server = HttpServer::new(|| {
+        App::new()
+            .wrap(middleware::Logger::default())
+            .wrap(middleware::DefaultHeaders::new()
+                .add(("X-Content-Type-Options", "nosniff"))
+                .add(("X-Frame-Options", "DENY"))
+                .add(("X-XSS-Protection", "1; mode=block"))
+                .add(("Strict-Transport-Security", "max-age=31536000"))
+            )
+    });
+    
+    if let Some(tls) = tls_config {
+        server.bind_rustls("0.0.0.0:8443", tls)?
+    } else {
+        server.bind("0.0.0.0:8080")?
+    }
+}
+```
+
+## Container Security
+
+### Secure Containerfile
+```dockerfile
+# Good: Security-hardened container
+FROM rust:1.81-slim as builder
+
+# Create non-root user for build
+RUN groupadd -r appuser && useradd -r -g appuser appuser
+
+WORKDIR /app
+COPY . .
+RUN cargo build --release
+
+# Use distroless for minimal attack surface
+FROM gcr.io/distroless/cc-debian12:nonroot
+
+# Copy binary with correct ownership
+COPY --from=builder --chown=nonroot:nonroot /app/target/release/talk-plus-plus /usr/local/bin/
+
+# Use non-root user
+USER nonroot
+
+# Only expose necessary port
+EXPOSE 8080
+
+# Use exec form to ensure proper signal handling
+ENTRYPOINT ["/usr/local/bin/talk-plus-plus"]
+```
+
+## Logging and Monitoring Security
+
+### Secure Logging Practices
+```rust
+// Good: Avoid logging sensitive data
+tracing::info!(
+    user_id = %user_id,
+    action = "intent_processed",
+    intent_length = intent.len(),
+    // Don't log the actual intent content - may contain sensitive info
+    "User processed intent successfully"
+);
+
+// Bad: Logging sensitive information
+// tracing::info!("Processing intent: {}", raw_intent); // May contain secrets
+```
+
+### Audit Trail Implementation
+```rust
+#[derive(Debug, Serialize)]
+pub struct AuditEvent {
+    pub timestamp: DateTime<Utc>,
+    pub user_id: String,
+    pub action: String,
+    pub resource: String,
+    pub ip_address: Option<String>,
+    pub user_agent: Option<String>,
+    pub success: bool,
+    pub details: serde_json::Value,
+}
+
+pub async fn log_audit_event(event: AuditEvent) -> Result<()> {
+    // Store in secure audit log
+    sqlx::query!(
+        "INSERT INTO audit_logs (timestamp, user_id, action, resource, ip_address, user_agent, success, details) 
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)",
+        event.timestamp,
+        event.user_id,
+        event.action,
+        event.resource,
+        event.ip_address,
+        event.user_agent,
+        event.success,
+        event.details
+    )
+    .execute(&audit_pool)
+    .await?;
+    
+    Ok(())
+}
+```
+
+## API Security
+
+### Rate Limiting
+```rust
+// Good: Implement rate limiting
+pub struct RateLimiter {
+    requests: Arc<DashMap<String, (u64, Instant)>>,
+    max_requests: u64,
+    window_duration: Duration,
+}
+
+impl RateLimiter {
+    pub fn check_rate_limit(&self, client_id: &str) -> Result<()> {
+        let now = Instant::now();
+        let mut entry = self.requests.entry(client_id.to_string()).or_insert((0, now));
+        
+        // Reset window if expired
+        if now.duration_since(entry.1) > self.window_duration {
+            entry.0 = 0;
+            entry.1 = now;
+        }
+        
+        if entry.0 >= self.max_requests {
+            return Err(anyhow!("Rate limit exceeded"));
+        }
+        
+        entry.0 += 1;
+        Ok(())
+    }
+}
+```
+
+### CORS Configuration
+```rust
+// Good: Restrictive CORS policy
+pub fn configure_cors() -> Cors {
+    Cors::default()
+        .allowed_origin_fn(|origin, _req_head| {
+            // Only allow specific origins in production
+            if is_production() {
+                origin.as_bytes().ends_with(b".yourdomain.com")
+            } else {
+                // More permissive for development
+                origin.as_bytes().starts_with(b"http://localhost")
+            }
+        })
+        .allowed_methods(vec!["GET", "POST", "PUT", "DELETE"])
+        .allowed_headers(vec![header::AUTHORIZATION, header::ACCEPT, header::CONTENT_TYPE])
+        .max_age(3600)
+}
+```
+
+## Error Handling Security
+
+### Safe Error Messages
+```rust
+// Good: Don't expose internal details
+pub enum ApiError {
+    #[error("Authentication failed")]
+    Unauthorized,
+    
+    #[error("Access denied")]
+    Forbidden,
+    
+    #[error("Resource not found")]
+    NotFound,
+    
+    #[error("Invalid input")]
+    BadRequest,
+    
+    #[error("Internal server error")]
+    InternalError, // Generic message for users
+}
+
+impl ApiError {
+    pub fn log_internal_details(&self, internal_error: &str) {
+        // Log detailed error for debugging, but don't expose to client
+        tracing::error!(
+            error = %internal_error,
+            "Internal error occurred"
+        );
+    }
+}
+
+// In handlers, return safe error messages
+match some_operation().await {
+    Ok(result) => Ok(result),
+    Err(e) => {
+        ApiError::InternalError.log_internal_details(&e.to_string());
+        Err(ApiError::InternalError) // Safe generic message
+    }
+}
+```
+
+## Data Protection
+
+### Encryption at Rest and in Transit
+```rust
+// Good: Encrypt sensitive data
+use aes_gcm::{Aes256Gcm, Key, Nonce};
+use aes_gcm::aead::{Aead, NewAead};
+
+pub struct DataEncryption {
+    cipher: Aes256Gcm,
+}
+
+impl DataEncryption {
+    pub fn new() -> Result<Self> {
+        let key = Key::from_slice(&get_encryption_key()?);
+        let cipher = Aes256Gcm::new(key);
+        Ok(Self { cipher })
+    }
+    
+    pub fn encrypt(&self, data: &[u8]) -> Result<Vec<u8>> {
+        let nonce = generate_nonce();
+        let ciphertext = self.cipher.encrypt(&nonce, data)
+            .map_err(|e| anyhow!("Encryption failed: {}", e))?;
+        
+        // Prepend nonce to ciphertext for storage
+        let mut result = nonce.to_vec();
+        result.extend_from_slice(&ciphertext);
+        Ok(result)
+    }
+    
+    pub fn decrypt(&self, encrypted_data: &[u8]) -> Result<Vec<u8>> {
+        if encrypted_data.len() < 12 {
+            return Err(anyhow!("Invalid encrypted data"));
+        }
+        
+        let (nonce_bytes, ciphertext) = encrypted_data.split_at(12);
+        let nonce = Nonce::from_slice(nonce_bytes);
+        
+        self.cipher.decrypt(nonce, ciphertext)
+            .map_err(|e| anyhow!("Decryption failed: {}", e))
+    }
+}
+```
+description:
+globs:
+alwaysApply: false
+---

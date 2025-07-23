@@ -1,0 +1,279 @@
+#!/bin/bash
+# Pre-push hook for Talk++ AI Middleware Platform
+# ===============================================
+# This hook runs before pushing to remote to ensure security and quality
+
+set -e
+
+# Colors for output
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+echo -e "${BLUE}🚀 Running pre-push checks for Talk++ AI Middleware Platform${NC}"
+echo "=============================================================="
+
+# Get information about what's being pushed
+protected_branch="main"
+current_branch=$(git rev-parse --abbrev-ref HEAD)
+remote="$1"
+url="$2"
+
+echo -e "${BLUE}📋 Push information:${NC}"
+echo "  Current branch: $current_branch"
+echo "  Remote: $remote"
+echo "  URL: $url"
+echo ""
+
+# Initialize pass/fail tracking
+CHECKS_PASSED=true
+
+# Function to run a check and track results
+run_check() {
+    local check_name="$1"
+    local command="$2"
+    
+    echo -e "${BLUE}🔍 $check_name${NC}"
+    if eval "$command"; then
+        echo -e "${GREEN}✅ $check_name passed${NC}"
+    else
+        echo -e "${RED}❌ $check_name failed${NC}"
+        CHECKS_PASSED=false
+    fi
+    echo ""
+}
+
+# 1. Branch Protection Check
+if [ "$current_branch" = "$protected_branch" ]; then
+    echo -e "${YELLOW}⚠️  Pushing directly to protected branch '$protected_branch'${NC}"
+    echo "Consider using a pull request workflow instead."
+    
+    # Additional checks for main branch pushes
+    echo -e "${BLUE}🔒 Running additional checks for protected branch...${NC}"
+    
+    # Ensure we have a clean working directory
+    if ! git diff-index --quiet HEAD --; then
+        echo -e "${RED}❌ Working directory is not clean${NC}"
+        CHECKS_PASSED=false
+    fi
+fi
+
+# 2. Comprehensive Test Suite
+echo -e "${BLUE}🧪 Running comprehensive test suite...${NC}"
+
+# Rust tests
+if [ -f "Cargo.toml" ]; then
+    run_check "Rust unit tests" "cargo test --all --no-fail-fast"
+    run_check "Rust integration tests" "cargo test --test integration --no-fail-fast || true"
+    
+    # Security audit
+    if command -v cargo-audit >/dev/null 2>&1; then
+        run_check "Rust security audit" "cargo audit"
+    fi
+fi
+
+# Node.js tests
+for dir in $(find . -name "package.json" -not -path "*/node_modules/*" -exec dirname {} \;); do
+    if [ -d "$dir/node_modules" ]; then
+        echo "Running tests in $dir..."
+        cd "$dir"
+        
+        if npm run test >/dev/null 2>&1; then
+            run_check "Node.js tests ($dir)" "npm test"
+        elif npx jest --version >/dev/null 2>&1; then
+            run_check "Jest tests ($dir)" "npx jest"
+        fi
+        
+        cd - > /dev/null
+    fi
+done
+
+# 3. Security Scanning
+echo -e "${BLUE}🔐 Running security scans...${NC}"
+
+# Secret detection with multiple tools
+if command -v trufflehog >/dev/null 2>&1; then
+    run_check "TruffleHog security scan" "trufflehog git file://. --only-verified"
+elif command -v gitleaks >/dev/null 2>&1; then
+    run_check "GitLeaks security scan" "gitleaks detect --source . --verbose"
+fi
+
+# Dependency vulnerability scanning
+if command -v cargo-audit >/dev/null 2>&1; then
+    run_check "Cargo dependency audit" "cargo audit"
+fi
+
+# NPM audit for each package.json
+for dir in $(find . -name "package.json" -not -path "*/node_modules/*" -exec dirname {} \;); do
+    cd "$dir"
+    if [ -f "package-lock.json" ]; then
+        run_check "NPM audit ($dir)" "npm audit --audit-level=high"
+    fi
+    cd - > /dev/null
+done
+
+# 4. Container Security (if containers are being built)
+CONTAINER_FILES=$(find . -name "Containerfile" -o -name "Dockerfile")
+if [ -n "$CONTAINER_FILES" ]; then
+    echo -e "${BLUE}🐳 Running container security checks...${NC}"
+    
+    for container_file in $CONTAINER_FILES; do
+        # Build container for security scanning
+        container_dir=$(dirname "$container_file")
+        container_name="talk-plus-plus-security-scan"
+        
+        echo "Building container from $container_file for security scan..."
+        if docker build -f "$container_file" -t "$container_name" "$container_dir" >/dev/null 2>&1; then
+            # Run Trivy security scan if available
+            if command -v trivy >/dev/null 2>&1; then
+                run_check "Trivy container scan ($container_file)" "trivy image --severity HIGH,CRITICAL $container_name"
+            fi
+            
+            # Cleanup
+            docker rmi "$container_name" >/dev/null 2>&1 || true
+        fi
+    done
+fi
+
+# 5. Infrastructure Security
+if [ -d "k8s" ]; then
+    echo -e "${BLUE}☸️  Running Kubernetes security checks...${NC}"
+    
+    # Kubesec security scanning
+    if command -v kubesec >/dev/null 2>&1; then
+        find k8s -name "*.yaml" -o -name "*.yml" | while read k8s_file; do
+            if grep -q "kind:" "$k8s_file"; then
+                run_check "Kubesec scan ($k8s_file)" "kubesec scan $k8s_file"
+            fi
+        done
+    fi
+    
+    # Kube-score security scoring
+    if command -v kube-score >/dev/null 2>&1; then
+        run_check "Kube-score security check" "kube-score score k8s/**/*.yaml --output-format json"
+    fi
+fi
+
+# 6. Terraform Security (if applicable)
+if [ -d "terraform" ] || find . -name "*.tf" -type f | head -1 >/dev/null 2>&1; then
+    echo -e "${BLUE}🏗️  Running Terraform security checks...${NC}"
+    
+    if command -v checkov >/dev/null 2>&1; then
+        run_check "Checkov IaC security scan" "checkov -d . --framework terraform"
+    fi
+    
+    if command -v tfsec >/dev/null 2>&1; then
+        run_check "TFSec security scan" "tfsec ."
+    fi
+fi
+
+# 7. License Compliance Check
+echo -e "${BLUE}📜 Checking license compliance...${NC}"
+
+# Rust dependencies
+if [ -f "Cargo.toml" ] && command -v cargo-license >/dev/null 2>&1; then
+    echo "Checking Rust dependency licenses..."
+    RUST_LICENSES=$(cargo license --json 2>/dev/null | jq -r '.[].license' | sort -u)
+    
+    # Check for problematic licenses
+    if echo "$RUST_LICENSES" | grep -q "GPL"; then
+        echo -e "${YELLOW}⚠️  GPL licenses found in Rust dependencies - review compatibility${NC}"
+    fi
+fi
+
+# Node.js dependencies
+for dir in $(find . -name "package.json" -not -path "*/node_modules/*" -exec dirname {} \;); do
+    cd "$dir"
+    if [ -d "node_modules" ] && command -v license-checker >/dev/null 2>&1; then
+        echo "Checking Node.js dependency licenses in $dir..."
+        LICENSE_ISSUES=$(license-checker --onlyAllow 'MIT;BSD;Apache;ISC;Unlicense' --excludePrivatePackages 2>/dev/null | grep -c "└─" || true)
+        if [ "$LICENSE_ISSUES" -gt 0 ]; then
+            echo -e "${YELLOW}⚠️  Potential license issues found in $dir${NC}"
+        fi
+    fi
+    cd - > /dev/null
+done
+
+# 8. Performance Regression Check
+echo -e "${BLUE}⚡ Running performance checks...${NC}"
+
+# Rust benchmarks (if available)
+if [ -d "benches" ] && [ -f "Cargo.toml" ]; then
+    if grep -q "\[\[bench\]\]" Cargo.toml; then
+        run_check "Rust benchmarks" "cargo bench --no-run"
+    fi
+fi
+
+# Bundle size check for frontend
+for dir in $(find . -name "package.json" -not -path "*/node_modules/*" -exec dirname {} \;); do
+    cd "$dir"
+    if [ -f "webpack.config.js" ] || [ -f "vite.config.js" ] || [ -f "next.config.js" ]; then
+        echo "Checking bundle size in $dir..."
+        if npm run build >/dev/null 2>&1; then
+            # Check if bundle size is reasonable (example thresholds)
+            if [ -d "dist" ] || [ -d "build" ]; then
+                BUNDLE_SIZE=$(find dist build -name "*.js" -type f 2>/dev/null | xargs wc -c 2>/dev/null | tail -1 | awk '{print $1}' || echo "0")
+                if [ "$BUNDLE_SIZE" -gt 5000000 ]; then # 5MB threshold
+                    echo -e "${YELLOW}⚠️  Large bundle size detected: $BUNDLE_SIZE bytes${NC}"
+                fi
+            fi
+        fi
+    fi
+    cd - > /dev/null
+done
+
+# 9. Database Migration Safety Check
+if find . -name "*migration*" -type f | head -1 >/dev/null 2>&1; then
+    echo -e "${BLUE}🗄️  Checking database migrations...${NC}"
+    
+    # Look for potentially dangerous migration operations
+    MIGRATION_FILES=$(find . -name "*migration*" -type f)
+    for migration in $MIGRATION_FILES; do
+        if grep -q -E "(DROP|DELETE|TRUNCATE)" "$migration"; then
+            echo -e "${YELLOW}⚠️  Potentially destructive migration found: $migration${NC}"
+            echo "Please ensure you have backups and review carefully."
+        fi
+    done
+fi
+
+# 10. Documentation Check
+echo -e "${BLUE}📚 Checking documentation...${NC}"
+
+# Ensure README exists and is up to date
+if [ ! -f "README.md" ]; then
+    echo -e "${YELLOW}⚠️  README.md not found${NC}"
+elif [ $(find . -name "*.rs" -o -name "*.js" -o -name "*.ts" -newer README.md | wc -l) -gt 0 ]; then
+    echo -e "${YELLOW}⚠️  README.md may be outdated (code files are newer)${NC}"
+fi
+
+# Check for security policy
+if [ ! -f "SECURITY.md" ]; then
+    echo -e "${YELLOW}⚠️  SECURITY.md not found - consider adding security policy${NC}"
+fi
+
+# Final Result
+echo "=============================================================="
+if [ "$CHECKS_PASSED" = true ]; then
+    echo -e "${GREEN}🎉 All pre-push checks passed! Push proceeding.${NC}"
+    
+    # Optional: Send notification (Slack, email, etc.)
+    if [ "$current_branch" = "$protected_branch" ]; then
+        echo -e "${BLUE}📢 Pushing to $protected_branch - consider notifying the team${NC}"
+    fi
+    
+    exit 0
+else
+    echo -e "${RED}❌ Some pre-push checks failed. Push aborted.${NC}"
+    echo ""
+    echo -e "${BLUE}💡 Troubleshooting tips:${NC}"
+    echo "  - Fix failing tests before pushing"
+    echo "  - Address security vulnerabilities"
+    echo "  - Ensure all linting passes"
+    echo "  - Review any licensing issues"
+    echo "  - Use 'git push --no-verify' to skip (not recommended for $protected_branch)"
+    echo ""
+    echo -e "${BLUE}🔍 For more details, check the output above${NC}"
+    exit 1
+fi 

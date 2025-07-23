@@ -1,0 +1,44 @@
+[package]
+name = "talkpp-external-services"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[dependencies]
+tokio.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+anyhow.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+chrono.workspace = true
+tracing.workspace = true
+reqwest.workspace = true
+futures.workspace = true
+async-trait.workspace = true
+
+# Google APIs
+google-apis-common.workspace = true
+google-drive3.workspace = true
+google-calendar3 = "5.0"
+google-gmail1 = "5.0"
+google-people1 = "5.0"
+
+# Microsoft Graph
+microsoft-graph.workspace = true
+oauth2 = "4.4"
+
+# Email protocols
+async-imap = "0.9"
+async-smtp = "0.4"
+mail-parser = "0.8"
+
+# Calendar and contact standards
+icalendar = "0.16"
+vcard = "0.3"
+
+# Additional integrations
+dropbox-sdk = "0.3"
+aws-sdk-s3 = "1.0"
+azure-storage = "0.19" 

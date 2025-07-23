@@ -1,0 +1,55 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+
+metadata:
+  name: talk-plus-plus-dev
+
+namespace: talk-plus-plus-dev
+
+resources:
+  - ../../base
+  - namespace.yaml
+
+patchesStrategicMerge:
+  - deployment-patch.yaml
+  - service-patch.yaml
+
+patchesJson6902:
+  - target:
+      version: v1
+      kind: Deployment
+      name: talk-plus-plus
+    path: resource-limits-patch.yaml
+
+images:
+  - name: talk-plus-plus
+    newTag: develop-latest
+
+replicas:
+  - name: talk-plus-plus
+    count: 2
+
+commonLabels:
+  environment: development
+  tier: dev
+
+commonAnnotations:
+  environment: development
+  contact: devops@talk-plus-plus.com
+
+configMapGenerator:
+  - name: app-config
+    behavior: merge
+    literals:
+      - LOG_LEVEL=debug
+      - RUST_ENV=development
+      - ENVIRONMENT=development
+      - DEBUG_MODE=true
+
+secretGenerator:
+  - name: vault-config
+    behavior: merge
+    literals:
+      - VAULT_ADDR=https://vault-dev.talk-plus-plus.com:8200
+      - VAULT_ROLE=talk-plus-plus-dev
+      - VAULT_NAMESPACE=dev 

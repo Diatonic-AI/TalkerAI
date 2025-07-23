@@ -1,0 +1,218 @@
+version: 2
+updates:
+  # Rust dependencies
+  - package-ecosystem: "cargo"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "monday"
+      time: "09:00"
+      timezone: "America/Los_Angeles"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "security-team"
+    assignees:
+      - "devops-team"
+    commit-message:
+      prefix: "deps"
+      prefix-development: "deps-dev"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "rust"
+      - "automerge"
+    allow:
+      - dependency-type: "direct"
+      - dependency-type: "indirect"
+    ignore:
+      # Ignore major version updates for now
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    groups:
+      security-updates:
+        patterns:
+          - "*"
+        update-types:
+          - "security"
+      tokio-ecosystem:
+        patterns:
+          - "tokio*"
+          - "hyper*"
+          - "tower*"
+      serde-ecosystem:
+        patterns:
+          - "serde*"
+      tracing-ecosystem:
+        patterns:
+          - "tracing*"
+
+  # Node.js dependencies for frontend
+  - package-ecosystem: "npm"
+    directory: "/frontend"
+    schedule:
+      interval: "weekly"
+      day: "tuesday"
+      time: "09:00"
+      timezone: "America/Los_Angeles"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "frontend-team"
+    commit-message:
+      prefix: "deps(frontend)"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "frontend"
+      - "javascript"
+    allow:
+      - dependency-type: "direct"
+      - dependency-type: "indirect"
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+    groups:
+      react-ecosystem:
+        patterns:
+          - "react*"
+          - "@types/react*"
+      material-ui:
+        patterns:
+          - "@mui/*"
+          - "@emotion/*"
+      build-tools:
+        patterns:
+          - "webpack*"
+          - "babel*"
+          - "eslint*"
+          - "prettier*"
+
+  # Node.js dependencies for electron app
+  - package-ecosystem: "npm"
+    directory: "/electron-app"
+    schedule:
+      interval: "weekly"
+      day: "tuesday"
+      time: "10:00"
+      timezone: "America/Los_Angeles"
+    open-pull-requests-limit: 3
+    reviewers:
+      - "desktop-team"
+    commit-message:
+      prefix: "deps(electron)"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "electron"
+      - "desktop"
+    allow:
+      - dependency-type: "direct"
+      - dependency-type: "indirect"
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
+      # Be more conservative with Electron updates
+      - dependency-name: "electron"
+        update-types: ["version-update:semver-minor"]
+    groups:
+      electron-ecosystem:
+        patterns:
+          - "electron*"
+          - "@electron/*"
+
+  # Node.js dependencies for frontend server
+  - package-ecosystem: "npm"
+    directory: "/frontend-server"
+    schedule:
+      interval: "weekly"
+      day: "tuesday"
+      time: "11:00"
+      timezone: "America/Los_Angeles"
+    open-pull-requests-limit: 3
+    commit-message:
+      prefix: "deps(frontend-server)"
+    labels:
+      - "dependencies"
+      - "backend"
+      - "node"
+
+  # Docker dependencies
+  - package-ecosystem: "docker"
+    directory: "/docker"
+    schedule:
+      interval: "weekly"
+      day: "wednesday"
+      time: "09:00"
+      timezone: "America/Los_Angeles"
+    open-pull-requests-limit: 3
+    reviewers:
+      - "devops-team"
+    commit-message:
+      prefix: "deps(docker)"
+    labels:
+      - "dependencies"
+      - "docker"
+      - "infrastructure"
+
+  # Additional Docker files
+  - package-ecosystem: "docker"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "wednesday"
+      time: "10:00"
+      timezone: "America/Los_Angeles"
+    open-pull-requests-limit: 2
+    commit-message:
+      prefix: "deps(containers)"
+    labels:
+      - "dependencies"
+      - "containers"
+
+  # GitHub Actions dependencies
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+      day: "thursday"
+      time: "09:00"
+      timezone: "America/Los_Angeles"
+    open-pull-requests-limit: 5
+    reviewers:
+      - "devops-team"
+    commit-message:
+      prefix: "ci"
+      include: "scope"
+    labels:
+      - "dependencies"
+      - "github-actions"
+      - "ci-cd"
+    groups:
+      actions-core:
+        patterns:
+          - "actions/*"
+      docker-actions:
+        patterns:
+          - "docker/*"
+      security-actions:
+        patterns:
+          - "github/codeql-action"
+          - "aquasecurity/*"
+          - "anchore/*"
+
+  # Terraform dependencies (if present)
+  - package-ecosystem: "terraform"
+    directory: "/terraform"
+    schedule:
+      interval: "weekly"
+      day: "friday"
+      time: "09:00"
+      timezone: "America/Los_Angeles"
+    open-pull-requests-limit: 3
+    reviewers:
+      - "infrastructure-team"
+    commit-message:
+      prefix: "terraform"
+    labels:
+      - "dependencies"
+      - "terraform"
+      - "infrastructure" 

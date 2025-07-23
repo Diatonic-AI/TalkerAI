@@ -1,0 +1,132 @@
+# Cursor AI IDE Ignore Configuration
+# ==================================
+# Optimizes Cursor's AI assistance by excluding unnecessary files
+
+# Build and Distribution Files
+target/
+dist/
+build/
+out/
+node_modules/
+.next/
+
+# Large Binary Files
+*.exe
+*.dmg
+*.app
+*.deb
+*.rpm
+*.tar.gz
+*.zip
+*.pdf
+*.jpg
+*.jpeg
+*.png
+*.gif
+*.svg
+*.ico
+*.woff
+*.woff2
+*.ttf
+*.eot
+
+# Generated Files
+Cargo.lock
+package-lock.json
+yarn.lock
+*.min.js
+*.min.css
+*.bundle.js
+*.chunk.js
+
+# Logs and Temporary Files
+*.log
+*.tmp
+*.temp
+.cache/
+logs/
+tmp/
+
+# Database Files
+*.db
+*.sqlite
+*.sqlite3
+
+# AI/ML Model Files (usually too large for context)
+*.model
+*.weights
+*.h5
+*.pb
+*.onnx
+*.pkl
+*.joblib
+
+# Vector Database Storage
+/vector-storage/
+/qdrant-storage/
+/chroma-storage/
+*.index
+*.vectors
+
+# Container and VM Data
+container-data/
+.container-volumes/
+docker-compose.override.yml
+
+# Environment and Secret Files
+.env*
+*.pem
+*.key
+*.crt
+vault-tokens/
+secrets/
+
+# Version Control
+.git/
+.gitignore
+
+# IDE Specific
+.vscode/
+.idea/
+
+# OS Files
+.DS_Store
+Thumbs.db
+*.swp
+*~
+
+# Test Coverage and Reports
+coverage/
+.nyc_output/
+test-results/
+
+# Documentation Build Files
+/docs/_build/
+/docs/site/
+
+# Backup Files
+*.bak
+*.backup
+*.old
+*.orig
+
+# Large Data Directories
+/data/
+/postgres-data/
+/redis-data/
+/prometheus-data/
+/grafana-data/
+
+# Compiled Python Files
+__pycache__/
+*.pyc
+*.pyo
+
+# Jupyter Notebook Checkpoints
+.ipynb_checkpoints/
+
+# Talk++ Specific Large Files
+/frontend/public/static/
+/api-server/uploads/
+/runtime/cache/
+/compiler/build-cache/ 

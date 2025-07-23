@@ -1,0 +1,199 @@
+# DevOps and Deployment Rules
+
+## Secret Management Guidelines
+
+### HashiCorp Vault Integration
+- NEVER hardcode secrets in any configuration files
+- Use Vault dynamic secrets for database connections
+- Implement short-lived tokens with automatic rotation
+- Use Vault Agent for secret injection in Kubernetes pods
+
+```yaml
+# Good: Vault secret reference
+apiVersion: v1
+kind: Secret
+metadata:
+  name: app-secrets
+  annotations:
+    vault.hashicorp.com/agent-inject: "true"
+    vault.hashicorp.com/role: "talk-plus-plus"
+data:
+  # Secrets injected by Vault Agent
+```
+
+```yaml
+# Bad: Hardcoded secrets
+apiVersion: v1
+kind: Secret
+metadata:
+  name: app-secrets
+data:
+  password: cGFzc3dvcmQxMjM=  # Never do this
+```
+
+### Environment-Specific Configuration
+- Separate configurations for dev, staging, and production
+- Use Kustomize for environment-specific overlays
+- Implement GitOps workflow with ArgoCD
+
+```
+k8s/
+├── base/           # Common configurations
+├── overlays/
+│   ├── dev/        # Development overrides
+│   ├── staging/    # Staging overrides
+│   └── production/ # Production overrides
+```
+
+## Container Best Practices
+
+### Multi-stage Dockerfile Optimization
+```dockerfile
+# Good: Multi-stage build
+FROM rust:1.81 as builder
+WORKDIR /app
+COPY . .
+RUN cargo build --release
+
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y ca-certificates
+COPY --from=builder /app/target/release/app /usr/local/bin/
+USER 1000
+EXPOSE 8080
+CMD ["app"]
+```
+
+### Security Hardening
+- Always run containers as non-root user
+- Use distroless or minimal base images
+- Implement health checks and readiness probes
+- Set resource limits and requests
+
+## Kubernetes Best Practices
+
+### Resource Management
+```yaml
+# Always specify resource limits
+resources:
+  requests:
+    memory: "256Mi"
+    cpu: "250m"
+  limits:
+    memory: "512Mi"
+    cpu: "500m"
+```
+
+### Security Contexts
+```yaml
+securityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+```
+
+### Monitoring and Observability
+- Implement Prometheus metrics endpoints
+- Use structured logging with correlation IDs
+- Set up distributed tracing with Jaeger
+- Configure alerting rules for critical services
+
+## CI/CD Pipeline Guidelines
+
+### GitHub Actions Workflow Structure
+- Separate workflows for different components (Rust, Node.js, Containers)
+- Implement matrix builds for multiple architectures
+- Use caching for faster builds
+- Implement security scanning (Snyk, Trivy)
+
+### Deployment Strategy
+- Use blue-green deployment for zero-downtime updates
+- Implement canary releases for gradual rollouts
+- Automated rollback on health check failures
+- Database migration safety checks
+
+## Terraform Best Practices
+
+### State Management
+- Use remote state backend (S3 + DynamoDB)
+- Implement state locking
+- Separate state files by environment
+
+### Module Structure
+```
+terraform/
+├── modules/
+│   ├── k8s-cluster/
+│   ├── vault-setup/
+│   └── monitoring/
+├── environments/
+│   ├── dev/
+│   ├── staging/
+│   └── production/
+```
+
+### Variable Management
+- Use terraform.tfvars files (not committed)
+- Implement variable validation
+- Use sensitive flag for secrets
+
+## Git Workflow Guidelines
+
+### Branch Protection Rules
+- Require pull request reviews
+- Require status checks to pass
+- Restrict pushes to main branch
+- Require up-to-date branches
+
+### Commit Message Format
+```
+type(scope): description
+
+[optional body]
+
+[optional footer]
+```
+
+Types: feat, fix, docs, style, refactor, test, chore, ci, perf
+
+### Pre-commit Hooks
+- Code formatting (rustfmt, prettier)
+- Linting (clippy, eslint)
+- Security scanning
+- Secret detection
+
+## Monitoring and Alerting
+
+### Key Metrics to Monitor
+- Application performance (response time, throughput)
+- Resource utilization (CPU, memory, disk)
+- Error rates and success rates
+- Security events and anomalies
+
+### Alert Severity Levels
+- P0 (Critical): Service down, data loss
+- P1 (High): Performance degradation, partial outage  
+- P2 (Medium): Non-critical issues, warnings
+- P3 (Low): Informational, maintenance needed
+
+## Disaster Recovery
+
+### Backup Strategy
+- Automated database backups with point-in-time recovery
+- Configuration backups in version control
+- Container image registry replication
+- Documentation and runbook maintenance
+
+### Recovery Testing
+- Regular disaster recovery drills
+- Automated recovery procedures
+- RTO and RPO targets defined
+- Incident response playbooks
+description:
+globs:
+alwaysApply: false
+---

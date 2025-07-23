@@ -1,0 +1,61 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: talkpp-config
+  namespace: talkpp
+  labels:
+    app.kubernetes.io/name: talkpp
+    app.kubernetes.io/component: config
+data:
+  # Application configuration
+  server.port: "8080"
+  rust.log: "info"
+  cors.origin: "*"
+  
+  # Database configuration
+  database.host: "postgresql"
+  database.port: "5432"
+  database.name: "talkpp"
+  
+  # Redis configuration
+  redis.host: "redis"
+  redis.port: "6379"
+  
+  # Compiler configuration
+  compiler.target.default: "rust"
+  compiler.optimization.default: "debug"
+  
+  # Service configuration
+  services.mock.enabled: "false"
+  services.timeout.seconds: "30"
+  services.retry.count: "3"
+
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: talkpp-examples
+  namespace: talkpp
+  labels:
+    app.kubernetes.io/name: talkpp
+    app.kubernetes.io/component: examples
+data:
+  hello.tpp: |
+    // Basic user registration workflow
+    if new user registers then
+      validate email using SendGrid
+      store user data in PostgreSQL
+      send welcome SMS using Twilio
+  
+  advanced.tpp: |
+    // Advanced workflow with conditions
+    if payment received then
+      amount: payment.amount
+      if amount > 1000 then
+        send high_value_alert using SendGrid
+        create audit_log in PostgreSQL
+      else
+        send receipt using SendGrid
+      
+      update inventory in PostgreSQL
+      send confirmation SMS using Twilio 
