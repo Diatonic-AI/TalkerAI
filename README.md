@@ -478,8 +478,8 @@ async def handler(event: Dict[str, Any]) -> Dict[str, Any]:
 
 ```bash
 # Clone and setup
-git clone https://github.com/yourusername/talkplusplus.git
-cd talkplusplus
+git clone https://github.com/Diatonic-AI/TalkerAI.git
+cd TalkerAI
 
 # Install Rust toolchain
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
@@ -511,9 +511,9 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 ## 📞 Support
 
-- **Issues**: [GitHub Issues](https://github.com/yourusername/talkplusplus/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/yourusername/talkplusplus/discussions)
-- **Documentation**: [Wiki](https://github.com/yourusername/talkplusplus/wiki)
+- **Issues**: [GitHub Issues](https://github.com/Diatonic-AI/TalkerAI/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/Diatonic-AI/TalkerAI/discussions)
+- **Documentation**: [Wiki](https://github.com/Diatonic-AI/TalkerAI/wiki)
 
 ---
 
