@@ -1,0 +1,531 @@
+# Multi-Language Code Generation Guidelines
+
+## Code Generation Philosophy
+
+### Language-Agnostic Principles
+- Generate idiomatic code for each target language
+- Maintain consistent semantics across all languages
+- Include appropriate error handling patterns for each language
+- Generate clean, readable code that human developers can understand
+- Always include proper imports and dependencies
+
+### Target Language Characteristics
+- **Rust**: Async/await, Result types, structured error handling
+- **Python**: Type hints, async/await, exception handling
+- **JavaScript**: Modern ES6+, async/await, promise chains
+- **TypeScript**: Full type definitions, interfaces, proper generics
+- **Bash**: POSIX compliance, error checking, proper quoting
+
+## Rust Code Generation
+
+### Function Structure Template
+```rust
+fn generate_rust_function(program: &Program, config: &CompilerConfig) -> String {
+    let imports = generate_rust_imports(program);
+    let types = generate_rust_types(program);
+    let handler = generate_rust_handler(program, config);
+    let helpers = generate_rust_helpers(program);
+    
+    format!(
+        r#"{imports}
+
+{types}
+
+{handler}
+
+{helpers}"#,
+        imports = imports,
+        types = types,
+        handler = handler,
+        helpers = helpers
+    )
+}
+```
+
+### Rust-Specific Patterns
+```rust
+// Event handling structure
+use anyhow::Result;
+use serde::{Deserialize, Serialize};
+use tracing::{info, error};
+
+#[derive(Debug, Deserialize)]
+pub struct Event {
+    pub data: serde_json::Value,
+    pub context: std::collections::HashMap<String, String>,
+}
+
+#[derive(Debug, Serialize)]
+pub struct Response {
+    pub success: bool,
+    pub data: serde_json::Value,
+    pub message: String,
+}
+
+pub async fn handler(event: Event) -> Result<Response> {
+    info!("Processing event: {:?}", event);
+    
+    // Generate condition checks
+    if check_event_condition(&event)? {
+        // Generate action sequences
+        execute_actions(&event).await?;
+    }
+    
+    Ok(Response::success("Function executed successfully"))
+}
+```
+
+### Rust Service Integration
+```rust
+fn generate_rust_service_call(service: &ServiceCall, action: &Action) -> String {
+    match service.name.to_lowercase().as_str() {
+        "sendgrid" => format!(
+            r#"// SendGrid integration
+let result = send_email_sendgrid(
+    &event.data["email"].as_str().unwrap_or(""),
+    "Subject",
+    "Content"
+).await;
+if let Err(e) = result {{
+    error!("SendGrid error: {{}}", e);
+    return Ok(Response::error("Email sending failed"));
+}}"#
+        ),
+        "twilio" => format!(
+            r#"// Twilio integration
+let result = send_sms_twilio(
+    &event.data["phone"].as_str().unwrap_or(""),
+    "Message content"
+).await;
+if let Err(e) = result {{
+    error!("Twilio error: {{}}", e);
+    return Ok(Response::error("SMS sending failed"));
+}}"#
+        ),
+        _ => format!("// TODO: Implement {} service", service.name),
+    }
+}
+```
+
+## Python Code Generation
+
+### Python Function Template
+```python
+def generate_python_function(program: &Program) -> String {
+    format!(
+        r#"#!/usr/bin/env python3
+"""
+Generated Talk++ Python function
+"""
+
+import asyncio
+import json
+import logging
+from typing import Dict, Any, Optional
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+async def handler(event: Dict[str, Any]) -> Dict[str, Any]:
+    """Main event handler function."""
+    logger.info(f"Processing event: {{event}}")
+    
+    try:
+        # Generated condition and action logic
+        {body}
+        
+        return {{"success": True, "message": "Function executed successfully"}}
+    except Exception as e:
+        logger.error(f"Function execution failed: {{e}}")
+        return {{"success": False, "message": str(e)}}
+
+if __name__ == "__main__":
+    import sys
+    event_data = json.loads(sys.argv[1]) if len(sys.argv) > 1 else {{}}
+    result = asyncio.run(handler(event_data))
+    print(json.dumps(result, indent=2))
+"#,
+        body = generate_python_body(program)
+    )
+}
+```
+
+### Python Service Integration
+```python
+def generate_python_service_call(service: &ServiceCall) -> String {
+    match service.name.to_lowercase().as_str() {
+        "sendgrid" => r#"
+# SendGrid integration
+import sendgrid
+from sendgrid.helpers.mail import Mail
+
+sg = sendgrid.SendGridAPIClient(api_key=os.environ.get('SENDGRID_API_KEY'))
+message = Mail(
+    from_email=os.environ.get('FROM_EMAIL'),
+    to_emails=event.get('email', ''),
+    subject='Notification',
+    html_content='<p>Your message content here</p>'
+)
+
+try:
+    response = sg.send(message)
+    logger.info(f"Email sent successfully: {response.status_code}")
+except Exception as e:
+    logger.error(f"Failed to send email: {e}")
+    raise
+"#.to_string(),
+        
+        "twilio" => r#"
+# Twilio integration
+from twilio.rest import Client
+
+client = Client(
+    os.environ.get('TWILIO_ACCOUNT_SID'),
+    os.environ.get('TWILIO_AUTH_TOKEN')
+)
+
+try:
+    message = client.messages.create(
+        body='Your notification message',
+        from_=os.environ.get('TWILIO_FROM_NUMBER'),
+        to=event.get('phone', '')
+    )
+    logger.info(f"SMS sent successfully: {message.sid}")
+except Exception as e:
+    logger.error(f"Failed to send SMS: {e}")
+    raise
+"#.to_string(),
+        
+        _ => format!("# TODO: Implement {} service", service.name),
+    }
+}
+```
+
+## JavaScript/TypeScript Code Generation
+
+### JavaScript Template
+```javascript
+function generate_javascript_function(program: &Program) -> String {
+    format!(
+        r#"/**
+ * Generated Talk++ JavaScript function
+ */
+
+const {{ promisify }} = require('util');
+
+async function handler(event) {{
+    console.log('Processing event:', JSON.stringify(event, null, 2));
+    
+    try {{
+        // Generated logic
+        {body}
+        
+        return {{ success: true, message: 'Function executed successfully' }};
+    }} catch (error) {{
+        console.error('Function execution failed:', error);
+        return {{ success: false, message: error.message }};
+    }}
+}}
+
+// Service integration helpers
+{helpers}
+
+// Export for Node.js
+if (typeof module !== 'undefined' && module.exports) {{
+    module.exports = {{ handler }};
+}}
+
+// CLI execution
+if (require.main === module) {{
+    const event = process.argv[2] ? JSON.parse(process.argv[2]) : {{}};
+    handler(event).then(result => {{
+        console.log(JSON.stringify(result, null, 2));
+    }}).catch(console.error);
+}}
+"#,
+        body = generate_js_body(program),
+        helpers = generate_js_helpers(program)
+    )
+}
+```
+
+### TypeScript Enhancements
+```typescript
+fn generate_typescript_types() -> &'static str {
+    r#"
+interface Event {
+    data: Record<string, any>;
+    context: Record<string, string>;
+}
+
+interface Response {
+    success: boolean;
+    data?: any;
+    message: string;
+}
+
+interface ServiceConfig {
+    apiKey: string;
+    baseUrl?: string;
+    timeout?: number;
+}
+"#
+}
+
+fn generate_typescript_function(program: &Program) -> String {
+    format!(
+        r#"/**
+ * Generated Talk++ TypeScript function
+ */
+
+{types}
+
+export async function handler(event: Event): Promise<Response> {{
+    console.log('Processing event:', event);
+    
+    try {{
+        {body}
+        
+        return {{ success: true, message: 'Function executed successfully' }};
+    }} catch (error) {{
+        console.error('Function execution failed:', error);
+        return {{ 
+            success: false, 
+            message: error instanceof Error ? error.message : String(error)
+        }};
+    }}
+}}
+"#,
+        types = generate_typescript_types(),
+        body = generate_ts_body(program)
+    )
+}
+```
+
+## Bash Code Generation
+
+### Bash Template Structure
+```bash
+fn generate_bash_function(program: &Program) -> String {
+    format!(
+        r#"#!/bin/bash
+# Generated Talk++ Bash script
+# Strict error handling
+set -euo pipefail
+
+# Global configuration
+readonly SCRIPT_NAME="$(basename "$0")"
+readonly LOG_LEVEL="${{LOG_LEVEL:-INFO}}"
+
+# Logging functions
+log_info() {{
+    echo "[INFO] $(date +'%Y-%m-%d %H:%M:%S') $*" >&2
+}}
+
+log_error() {{
+    echo "[ERROR] $(date +'%Y-%m-%d %H:%M:%S') $*" >&2
+}}
+
+# Main handler function
+handler() {{
+    local event="$1"
+    log_info "Processing event: $event"
+    
+    # Parse JSON event (requires jq)
+    if ! command -v jq >/dev/null 2>&1; then
+        log_error "jq is required but not installed"
+        return 1
+    fi
+    
+    {body}
+    
+    # Return success response
+    echo '{{"success": true, "message": "Function executed successfully"}}'
+}}
+
+{helpers}
+
+# Main execution
+if [[ "${{BASH_SOURCE[0]}}" == "${{0}}" ]]; then
+    event="${{1:-{{}}}}"
+    if ! handler "$event"; then
+        log_error "Function execution failed"
+        echo '{{"success": false, "message": "Function execution failed"}}'
+        exit 1
+    fi
+fi
+"#,
+        body = generate_bash_body(program),
+        helpers = generate_bash_helpers(program)
+    )
+}
+```
+
+### Bash Service Integration
+```bash
+fn generate_bash_service_call(service: &ServiceCall) -> String {
+    match service.name.to_lowercase().as_str() {
+        "sendgrid" => r#"
+# SendGrid email sending
+send_email_sendgrid() {
+    local to_email="$1"
+    local subject="$2"
+    local content="$3"
+    
+    if [[ -z "${SENDGRID_API_KEY:-}" ]]; then
+        log_error "SENDGRID_API_KEY environment variable is required"
+        return 1
+    fi
+    
+    local response
+    response=$(curl -s -X POST \
+        "https://api.sendgrid.com/v3/mail/send" \
+        -H "Authorization: Bearer ${SENDGRID_API_KEY}" \
+        -H "Content-Type: application/json" \
+        -d "{
+            \"personalizations\": [{\"to\": [{\"email\": \"${to_email}\"}]}],
+            \"from\": {\"email\": \"${FROM_EMAIL:-noreply@example.com}\"},
+            \"subject\": \"${subject}\",
+            \"content\": [{\"type\": \"text/html\", \"value\": \"${content}\"}]
+        }")
+    
+    if [[ $? -eq 0 ]]; then
+        log_info "Email sent successfully to ${to_email}"
+        return 0
+    else
+        log_error "Failed to send email: ${response}"
+        return 1
+    fi
+}
+"#.to_string(),
+        
+        _ => format!("# TODO: Implement {} service", service.name),
+    }
+}
+```
+
+## Cross-Language Consistency
+
+### Function Signature Mapping
+```rust
+pub struct FunctionSignature {
+    pub name: String,
+    pub parameters: Vec<Parameter>,
+    pub return_type: ReturnType,
+    pub is_async: bool,
+}
+
+impl FunctionSignature {
+    pub fn to_rust(&self) -> String {
+        format!(
+            "pub async fn {}({}) -> Result<Response>",
+            self.name,
+            self.parameters.iter()
+                .map(|p| format!("{}: {}", p.name, p.rust_type))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    }
+    
+    pub fn to_python(&self) -> String {
+        format!(
+            "async def {}({}) -> Dict[str, Any]:",
+            self.name,
+            self.parameters.iter()
+                .map(|p| format!("{}: {}", p.name, p.python_type))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    }
+    
+    pub fn to_typescript(&self) -> String {
+        format!(
+            "export async function {}({}): Promise<Response>",
+            self.name,
+            self.parameters.iter()
+                .map(|p| format!("{}: {}", p.name, p.typescript_type))
+                .collect::<Vec<_>>()
+                .join(", ")
+        )
+    }
+}
+```
+
+### Error Handling Patterns
+```rust
+pub enum ErrorPattern {
+    Rust { use_result: bool, use_anyhow: bool },
+    Python { use_exceptions: bool, use_logging: bool },
+    JavaScript { use_promises: bool, use_try_catch: bool },
+    TypeScript { use_promises: bool, strict_types: bool },
+    Bash { use_set_e: bool, exit_codes: Vec<i32> },
+}
+
+impl ErrorPattern {
+    pub fn generate_wrapper(&self, inner_code: &str) -> String {
+        match self {
+            ErrorPattern::Rust { use_result: true, .. } => {
+                format!("match {} {{ Ok(val) => val, Err(e) => return Err(e.into()) }}", inner_code)
+            }
+            ErrorPattern::Python { use_exceptions: true, .. } => {
+                format!("try:\n    {}\nexcept Exception as e:\n    logger.error(f'Error: {{e}}')\n    raise", inner_code)
+            }
+            // ... other patterns
+        }
+    }
+}
+```
+
+## Testing Generated Code
+
+### Cross-Language Validation
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::process::Command;
+    
+    #[test]
+    fn test_generated_rust_compiles() {
+        let program = create_test_program();
+        let config = CompilerConfig::rust_config();
+        let generated = generate(&program, &config).unwrap();
+        
+        // Write to temporary file and attempt compilation
+        let temp_file = tempfile::NamedTempFile::new().unwrap();
+        std::fs::write(&temp_file, generated).unwrap();
+        
+        let output = Command::new("rustc")
+            .args(&["--check", temp_file.path().to_str().unwrap()])
+            .output()
+            .unwrap();
+            
+        assert!(output.status.success(), "Generated Rust code should compile");
+    }
+    
+    #[test]
+    fn test_generated_python_syntax() {
+        let program = create_test_program();
+        let config = CompilerConfig::python_config();
+        let generated = generate(&program, &config).unwrap();
+        
+        // Use Python AST parser to validate syntax
+        let output = Command::new("python3")
+            .args(&["-m", "py_compile", "/dev/stdin"])
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::piped())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .unwrap();
+            
+        // Write generated code to stdin and check result
+        // ... validation logic
+    }
+}
+```
+
+---
+description:
+globs:
+alwaysApply: false
+---

@@ -1,0 +1,624 @@
+# Talk++ Docker & Containerization Guidelines
+
+## Container Architecture Strategy
+
+### Multi-Stage Build Pattern
+```dockerfile
+# Dockerfile example for Talk++ runtime
+FROM rust:1.77-alpine AS builder
+
+# Install build dependencies
+RUN apk add --no-cache musl-dev pkgconfig openssl-dev
+
+WORKDIR /app
+
+# Copy dependency files first for better caching
+COPY Cargo.toml Cargo.lock ./
+COPY compiler/Cargo.toml compiler/
+COPY runtime/Cargo.toml runtime/
+COPY cli/Cargo.toml cli/
+COPY api-server/Cargo.toml api-server/
+
+# Build dependencies only (creates dummy src files)
+RUN mkdir -p compiler/src runtime/src cli/src api-server/src && \
+    echo "fn main() {}" > compiler/src/main.rs && \
+    echo "fn main() {}" > runtime/src/main.rs && \
+    echo "fn main() {}" > cli/src/main.rs && \
+    echo "fn main() {}" > api-server/src/main.rs && \
+    cargo build --release && \
+    rm -rf compiler/src runtime/src cli/src api-server/src
+
+# Copy actual source code
+COPY . .
+
+# Build the actual application
+RUN cargo build --release
+
+# Runtime stage - minimal Alpine image
+FROM alpine:3.18
+
+# Install runtime dependencies
+RUN apk add --no-cache \
+    ca-certificates \
+    python3 \
+    py3-pip \
+    nodejs \
+    npm \
+    bash \
+    curl \
+    jq \
+    postgresql-client
+
+# Create non-root user
+RUN addgroup -g 1001 -S talkpp && \
+    adduser -S talkpp -u 1001 -G talkpp
+
+# Create application directories
+RUN mkdir -p /app/bin /app/functions /app/logs /app/config && \
+    chown -R talkpp:talkpp /app
+
+# Copy binaries from builder stage
+COPY --from=builder /app/target/release/talkppc /app/bin/
+COPY --from=builder /app/target/release/talkpprun /app/bin/
+COPY --from=builder /app/target/release/talkpp-api-server /app/bin/
+
+# Copy configuration and examples
+COPY config/ /app/config/
+COPY examples/ /app/examples/
+
+# Set PATH and working directory
+ENV PATH="/app/bin:${PATH}"
+WORKDIR /app
+
+# Switch to non-root user
+USER talkpp
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8080/health || exit 1
+
+# Default command
+EXPOSE 8080
+CMD ["talkpp-api-server"]
+```
+
+### Docker Compose Development Environment
+```yaml
+# docker-compose.yml for local development
+version: '3.8'
+
+services:
+  talkpp-api:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile
+      target: development  # Multi-stage target for dev
+    ports:
+      - "8080:8080"
+    environment:
+      - RUST_LOG=debug
+      - DATABASE_URL=postgresql://talkpp:password@postgres:5432/talkpp
+      - REDIS_URL=redis://redis:6379
+      - SENDGRID_API_KEY=${SENDGRID_API_KEY:-}
+      - TWILIO_ACCOUNT_SID=${TWILIO_ACCOUNT_SID:-}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_started
+    volumes:
+      - ./logs:/app/logs
+      - ./examples:/app/examples:ro
+      - ./config:/app/config:ro
+    networks:
+      - talkpp-network
+    restart: unless-stopped
+
+  talkpp-frontend:
+    build:
+      context: .
+      dockerfile: docker/Dockerfile.frontend
+    ports:
+      - "3000:3000"
+    environment:
+      - API_URL=http://talkpp-api:8080
+    depends_on:
+      - talkpp-api
+    networks:
+      - talkpp-network
+
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      - POSTGRES_DB=talkpp
+      - POSTGRES_USER=talkpp
+      - POSTGRES_PASSWORD=password
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./docker/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    networks:
+      - talkpp-network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U talkpp -d talkpp"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    networks:
+      - talkpp-network
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  # Development tools
+  pgadmin:
+    image: dpage/pgadmin4:latest
+    environment:
+      - PGADMIN_DEFAULT_EMAIL=admin@talkpp.dev
+      - PGADMIN_DEFAULT_PASSWORD=admin
+    ports:
+      - "8081:80"
+    depends_on:
+      - postgres
+    networks:
+      - talkpp-network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  talkpp-network:
+    driver: bridge
+```
+
+## Development vs Production Configurations
+
+### Development Dockerfile
+```dockerfile
+# docker/Dockerfile.dev - optimized for development
+FROM rust:1.77
+
+# Install development tools
+RUN cargo install cargo-watch cargo-edit
+
+WORKDIR /app
+
+# Install runtime dependencies
+RUN apt-get update && apt-get install -y \
+    python3 \
+    python3-pip \
+    nodejs \
+    npm \
+    postgresql-client \
+    redis-tools \
+    curl \
+    jq
+
+# Copy source code (development mode mounts volumes)
+COPY . .
+
+# Don't build in dev mode - use cargo-watch
+CMD ["cargo", "watch", "-x", "run --bin talkpp-api-server"]
+```
+
+### Production Dockerfile
+```dockerfile
+# docker/Dockerfile.prod - optimized for production
+FROM rust:1.77-alpine AS builder
+
+# Production build optimizations
+ENV CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=musl-gcc
+ENV RUSTFLAGS="-C target-feature=-crt-static"
+
+RUN apk add --no-cache \
+    musl-dev \
+    pkgconfig \
+    openssl-dev \
+    openssl-libs-static
+
+WORKDIR /app
+
+# Build with optimizations
+COPY . .
+RUN cargo build --release --target x86_64-unknown-linux-musl
+
+# Minimal runtime image
+FROM scratch
+
+# Copy CA certificates
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/
+
+# Copy binary
+COPY --from=builder /app/target/x86_64-unknown-linux-musl/release/talkpp-api-server /talkpp-api-server
+
+# Non-root user (numeric for scratch image)
+USER 1001:1001
+
+EXPOSE 8080
+CMD ["/talkpp-api-server"]
+```
+
+## Container Orchestration
+
+### Kubernetes Deployment
+```yaml
+# k8s/deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: talkpp-api
+  labels:
+    app: talkpp-api
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: talkpp-api
+  template:
+    metadata:
+      labels:
+        app: talkpp-api
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1001
+        fsGroup: 1001
+      containers:
+      - name: talkpp-api
+        image: talkpp/api-server:latest
+        ports:
+        - containerPort: 8080
+        env:
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: talkpp-secrets
+              key: database-url
+        - name: REDIS_URL
+          value: "redis://redis-service:6379"
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+```
+
+### Helm Chart Values
+```yaml
+# helm/values.yaml
+image:
+  repository: talkpp/api-server
+  tag: "latest"
+  pullPolicy: IfNotPresent
+
+service:
+  type: ClusterIP
+  port: 8080
+
+ingress:
+  enabled: true
+  className: "nginx"
+  annotations:
+    cert-manager.io/cluster-issuer: "letsencrypt-prod"
+  hosts:
+    - host: api.talkpp.dev
+      paths:
+        - path: /
+          pathType: Prefix
+  tls:
+    - secretName: talkpp-tls
+      hosts:
+        - api.talkpp.dev
+
+autoscaling:
+  enabled: true
+  minReplicas: 2
+  maxReplicas: 10
+  targetCPUUtilizationPercentage: 70
+
+postgresql:
+  enabled: true
+  auth:
+    database: talkpp
+    username: talkpp
+  primary:
+    persistence:
+      size: 20Gi
+
+redis:
+  enabled: true
+  auth:
+    enabled: false
+```
+
+## Environment Configuration
+
+### Environment Variables Management
+```bash
+# .env.example - template for environment variables
+# Copy to .env and fill in actual values
+
+# Database Configuration
+DATABASE_URL=postgresql://username:password@localhost:5432/talkpp
+REDIS_URL=redis://localhost:6379
+
+# Service API Keys
+SENDGRID_API_KEY=your_sendgrid_api_key_here
+SENDGRID_FROM_EMAIL=noreply@yourdomain.com
+
+TWILIO_ACCOUNT_SID=your_twilio_account_sid
+TWILIO_AUTH_TOKEN=your_twilio_auth_token
+TWILIO_FROM_NUMBER=+1234567890
+
+# Application Configuration
+RUST_LOG=info
+JWT_SECRET=your_jwt_secret_here
+SERVER_PORT=8080
+CORS_ORIGIN=http://localhost:3000
+
+# Feature Flags
+ENABLE_MOCK_SERVICES=false
+ENABLE_TRACING=true
+ENABLE_METRICS=true
+```
+
+### Docker Secrets Management
+```yaml
+# docker-compose.prod.yml - production with secrets
+version: '3.8'
+
+services:
+  talkpp-api:
+    image: talkpp/api-server:latest
+    environment:
+      - DATABASE_URL_FILE=/run/secrets/database_url
+      - SENDGRID_API_KEY_FILE=/run/secrets/sendgrid_key
+    secrets:
+      - database_url
+      - sendgrid_key
+    deploy:
+      replicas: 3
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+
+secrets:
+  database_url:
+    external: true
+  sendgrid_key:
+    external: true
+```
+
+## Container Testing & CI/CD
+
+### Testing in Containers
+```bash
+#!/bin/bash
+# scripts/test-container.sh - Test container functionality
+
+set -euo pipefail
+
+echo "Building test container..."
+docker build -t talkpp-test -f docker/Dockerfile.test .
+
+echo "Running unit tests in container..."
+docker run --rm talkpp-test cargo test
+
+echo "Running integration tests..."
+docker-compose -f docker-compose.test.yml up --abort-on-container-exit
+docker-compose -f docker-compose.test.yml down -v
+
+echo "Testing CLI tools..."
+docker run --rm talkpp-test talkppc info
+docker run --rm talkpp-test talkpprun --help
+
+echo "All container tests passed!"
+```
+
+### CI/CD Pipeline (GitHub Actions)
+```yaml
+# .github/workflows/docker.yml
+name: Docker Build and Test
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:15
+        env:
+          POSTGRES_PASSWORD: password
+          POSTGRES_DB: talkpp_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v2
+    
+    - name: Build and test
+      run: |
+        docker build --target test -t talkpp:test .
+        docker run --rm talkpp:test
+
+  build-and-push:
+    needs: test
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    
+    steps:
+    - uses: actions/checkout@v3
+    
+    - name: Login to registry
+      uses: docker/login-action@v2
+      with:
+        username: ${{ secrets.DOCKER_USERNAME }}
+        password: ${{ secrets.DOCKER_PASSWORD }}
+    
+    - name: Build and push
+      uses: docker/build-push-action@v4
+      with:
+        context: .
+        push: true
+        tags: talkpp/api-server:latest,talkpp/api-server:${{ github.sha }}
+        cache-from: type=gha
+        cache-to: type=gha,mode=max
+```
+
+## Performance & Security
+
+### Container Security Best Practices
+```dockerfile
+# Security-focused Dockerfile patterns
+
+# Use specific versions, not 'latest'
+FROM rust:1.77.2-alpine
+
+# Create non-root user first
+RUN addgroup -g 1001 -S talkpp && \
+    adduser -S talkpp -u 1001 -G talkpp
+
+# Install only necessary packages
+RUN apk add --no-cache --virtual .build-deps \
+    musl-dev \
+    pkgconfig \
+    openssl-dev
+
+# Build application
+WORKDIR /app
+COPY --chown=talkpp:talkpp . .
+RUN cargo build --release
+
+# Remove build dependencies
+RUN apk del .build-deps
+
+# Set up runtime environment
+USER talkpp
+EXPOSE 8080
+
+# Use exec form for CMD
+CMD ["./target/release/talkpp-api-server"]
+```
+
+### Resource Limits & Monitoring
+```yaml
+# docker-compose.monitoring.yml
+version: '3.8'
+
+services:
+  talkpp-api:
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: '0.5'
+        reservations:
+          memory: 256M
+          cpus: '0.25'
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
+
+  prometheus:
+    image: prom/prometheus
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./monitoring/prometheus.yml:/etc/prometheus/prometheus.yml
+
+  grafana:
+    image: grafana/grafana
+    ports:
+      - "3001:3000"
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin
+    volumes:
+      - grafana_data:/var/lib/grafana
+
+volumes:
+  grafana_data:
+```
+
+## Deployment Automation
+
+### Deploy Script
+```bash
+#!/bin/bash
+# scripts/deploy.sh - Production deployment script
+
+set -euo pipefail
+
+ENVIRONMENT=${1:-staging}
+VERSION=${2:-latest}
+
+echo "Deploying Talk++ to $ENVIRONMENT (version: $VERSION)"
+
+# Pull latest images
+docker-compose -f docker-compose.$ENVIRONMENT.yml pull
+
+# Run database migrations
+docker-compose -f docker-compose.$ENVIRONMENT.yml run --rm talkpp-api \
+    sqlx migrate run
+
+# Deploy with zero-downtime rolling update
+docker-compose -f docker-compose.$ENVIRONMENT.yml up -d --scale talkpp-api=3
+
+# Health check
+echo "Waiting for deployment to be ready..."
+for i in {1..30}; do
+    if curl -f http://localhost:8080/health; then
+        echo "Deployment successful!"
+        exit 0
+    fi
+    sleep 10
+done
+
+echo "Deployment failed - health check timeout"
+exit 1
+```
+
+---
+description:
+globs:
+alwaysApply: false
+---

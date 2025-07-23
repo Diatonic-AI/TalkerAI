@@ -1,74 +1,151 @@
----
-description: Best practices for project structure, file organization, and path management across all projects
-globs: 
-alwaysApply: true
----
 
-# Navigation & Path Management
+# Talk++ Project Navigation & Structure
 
-## Project Structure Standards
+## Talk++ Project Architecture
 ```
-project-root/
-├── .cursor/              # Development rulesets
-├── .git/                 # Version control
-├── .gitignore           # Git ignore patterns
-├── README.md            # Project documentation
-├── requirements.txt     # Dependencies (Python)
-├── package.json         # Dependencies (Node.js)
-├── src/                 # Source code
-│   ├── main/            # Main application code
-│   ├── test/            # Test files
-│   └── utils/           # Utility functions
-├── docs/                # Documentation
-├── config/              # Configuration files
-├── scripts/             # Build/deployment scripts
-├── assets/              # Static assets
-└── build/               # Build output (git-ignored)
+talkplusplus/
+├── .cursor/                  # AI development rules and templates
+│   ├── code_writing.mdc     # Multi-language development guidelines
+│   └── rules/               # Specific development rules
+├── Cargo.toml               # Rust workspace configuration
+├── README.md                # Project documentation with examples
+├── compiler/                # 🧠 DSL Compiler (CORE COMPONENT)
+│   ├── src/lib.rs          #   Main compiler interface
+│   ├── src/lexer.rs        #   Talk++ tokenizer (logos-based)
+│   ├── src/parser.rs       #   Recursive descent parser
+│   ├── src/ast.rs          #   Abstract Syntax Tree definitions
+│   ├── src/codegen.rs      #   Multi-language code generator
+│   └── src/error.rs        #   Comprehensive error handling
+├── runtime/                 # 🚀 Runtime execution engine
+├── auth/                    # 🔐 Authentication & authorization
+├── executor/                # ⚡ Polyglot function executor
+├── simulator/               # 🧪 Dry-run simulation & testing
+├── wrappers/                # 🌐 Language runtime wrappers
+├── cli/                     # 🛠️ Command-line tools
+│   ├── src/talkppc.rs      #   Compiler CLI
+│   └── src/talkpprun.rs    #   Runtime CLI
+├── api-server/              # 🌍 REST API server
+├── frontend-server/         # 🎨 Web UI server  
+├── docker/                  # 🐳 Container configuration
+│   ├── Dockerfile          #   Production container
+│   ├── docker-compose.yml  #   Development environment
+│   └── init.sql            #   Database schema
+├── examples/                # 📚 Talk++ DSL examples
+│   ├── hello.tpp           #   Basic workflow example
+│   └── advanced.tpp        #   Complex logic example
+├── config/                  # ⚙️ Configuration files
+│   ├── dev/                #   Development config
+│   └── prod/               #   Production config
+├── tests/                   # 🧪 Integration tests
+└── logs/                    # 📝 Application logs
 ```
 
-## Path Navigation Best Practices
-- Use relative paths within the project
-- Avoid hardcoded absolute paths
-- Use environment variables for external paths
-- Follow OS-specific path conventions
-- Use path joining functions (os.path.join, path.join(), etc.)
+## Component Navigation Patterns
 
-## File Organization
-- **Group by feature** rather than file type
-- **Keep related files together**
-- **Use meaningful directory names**
-- **Limit nesting depth** (max 4-5 levels)
-- **Separate concerns** (business logic, UI, data access)
+### Core Development Areas
+- **Compiler**: `cd compiler/` - DSL parsing and code generation
+- **CLI Tools**: `cd cli/` - Command-line interface development  
+- **Runtime**: `cd runtime/` - Execution engine development
+- **Examples**: `cd examples/` - DSL examples and testing
 
-## Common Directory Patterns
-- `/src` or `/lib` - Main source code
-- `/test` or `/tests` - Test files
-- `/docs` - Documentation
-- `/config` - Configuration files
-- `/assets` or `/static` - Static resources
-- `/build` or `/dist` - Build outputs
-- `/scripts` - Automation scripts
-- `/tools` - Development tools
+### Language-Specific File Patterns
+- **Rust**: `**/*.rs` - All Rust source files
+- **Talk++ DSL**: `examples/*.tpp` - DSL source files
+- **Generated Code**: `target/` - Compiled artifacts
+- **Config**: `**/*.toml` - Cargo and configuration files
 
-## Navigation Commands
+### Development Workflow Shortcuts
+
 ```bash
-# Project navigation aliases
-alias root='cd $(git rev-parse --show-toplevel)'
-alias src='cd src'
-alias tests='cd tests'
-alias docs='cd docs'
-alias configs='cd config'
+# Quick navigation aliases
+alias tpp-root='cd $(git rev-parse --show-toplevel)'
+alias tpp-compiler='cd $(git rev-parse --show-toplevel)/compiler'
+alias tpp-cli='cd $(git rev-parse --show-toplevel)/cli'
+alias tpp-runtime='cd $(git rev-parse --show-toplevel)/runtime'
+alias tpp-examples='cd $(git rev-parse --show-toplevel)/examples'
 
-# Quick file finding
-find . -name "*.py" -type f | head -10
-grep -r "function_name" src/
-locate filename
+# Build shortcuts
+alias tpp-build='cargo build --release'
+alias tpp-test='cargo test'
+alias tpp-check='cargo clippy -- -D warnings'
+
+# Compiler testing
+alias tpp-compile='cargo run --bin talkppc --'
+alias tpp-run='cargo run --bin talkpprun --'
 ```
 
-## Path Management Tips
-- Use `.gitignore` for build artifacts and temporary files
-- Create symbolic links for frequently accessed directories
-- Use IDE bookmarks for important locations
+## Key Development Files
+
+### Always Check These First
+1. `Cargo.toml` - Workspace configuration and dependencies
+2. `compiler/src/lib.rs` - Main compiler interface
+3. `examples/*.tpp` - DSL syntax examples
+4. `README.md` - Usage examples and API docs
+
+### When Adding Features
+1. `compiler/src/lexer.rs` - Add DSL tokens
+2. `compiler/src/parser.rs` - Parse new syntax  
+3. `compiler/src/ast.rs` - Define AST nodes
+4. `compiler/src/codegen.rs` - Generate target code
+
+### When Debugging
+1. `compiler/src/error.rs` - Error definitions
+2. `logs/` - Runtime logs
+3. `tests/` - Integration test cases
+4. `target/debug/` - Debug builds
+
+## Search Patterns
+
+### Find DSL Syntax
+```bash
+# Find DSL examples
+find examples/ -name "*.tpp"
+
+# Search for specific DSL patterns
+rg "if.*then" examples/
+rg "using.*Grid" examples/
+```
+
+### Find Code Generation
+```bash
+# Find code generators
+rg "generate_.*" compiler/src/codegen.rs
+
+# Find error handling
+rg "CompilerError" compiler/src/
+```
+
+### Find Service Integrations
+```bash
+# Find service implementations
+rg "SendGrid\|Twilio\|PostgreSQL" --type rust
+
+# Find API endpoints
+rg "async fn.*handler" api-server/src/
+```
+
+## File Organization Principles
+
+### Compiler Component (Primary Focus)
+- Keep lexer, parser, AST, and codegen in separate files
+- Group related functionality (e.g., all service integrations)
+- Use clear module structure with `pub mod` declarations
+- Separate error types by component
+
+### Multi-Language Support
+- Each target language gets its own generation function
+- Share common patterns across language generators
+- Keep language-specific logic isolated
+- Test each language output separately
+
+### Testing Organization
+- Unit tests alongside source files (`#[cfg(test)]`)
+- Integration tests in `tests/` directory
+- Example-based tests using actual `.tpp` files
+- Benchmark tests for parser performance
+
+---
+
 - Maintain a consistent project structure across all projects
 - Document any non-standard directory purposes
 

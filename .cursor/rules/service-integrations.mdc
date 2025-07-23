@@ -1,0 +1,680 @@
+# Talk++ Service Integration Guidelines
+
+## Service Integration Architecture
+
+### Service Abstraction Pattern
+```rust
+use async_trait::async_trait;
+use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
+
+#[async_trait]
+pub trait ServiceIntegration: Send + Sync {
+    /// Service name identifier
+    fn name(&self) -> &'static str;
+    
+    /// Execute a service action with parameters
+    async fn execute(
+        &self,
+        action: &str,
+        parameters: &HashMap<String, serde_json::Value>,
+        context: &ExecutionContext,
+    ) -> Result<ServiceResponse, ServiceError>;
+    
+    /// Validate service configuration
+    fn validate_config(&self, config: &ServiceConfig) -> Result<(), ServiceError>;
+    
+    /// Get required environment variables
+    fn required_env_vars(&self) -> Vec<&'static str>;
+    
+    /// Support dry-run/mock mode
+    async fn mock_execute(
+        &self,
+        action: &str,
+        parameters: &HashMap<String, serde_json::Value>,
+    ) -> Result<ServiceResponse, ServiceError>;
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ServiceConfig {
+    pub name: String,
+    pub endpoint: Option<String>,
+    pub timeout_seconds: u64,
+    pub retry_count: u32,
+    pub env_prefix: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ServiceResponse {
+    pub success: bool,
+    pub data: serde_json::Value,
+    pub message: String,
+    pub execution_time_ms: u64,
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum ServiceError {
+    #[error("Configuration error: {message}")]
+    ConfigError { message: String },
+    
+    #[error("Authentication error: {message}")]
+    AuthError { message: String },
+    
+    #[error("Network error: {message}")]
+    NetworkError { message: String },
+    
+    #[error("Service unavailable: {service}")]
+    ServiceUnavailable { service: String },
+    
+    #[error("Rate limit exceeded for service: {service}")]
+    RateLimitExceeded { service: String },
+}
+```
+
+## SendGrid Email Service
+
+### SendGrid Implementation
+```rust
+use sendgrid::v3::*;
+use std::env;
+
+pub struct SendGridService {
+    client: SendGrid,
+    from_email: String,
+}
+
+impl SendGridService {
+    pub fn new() -> Result<Self, ServiceError> {
+        let api_key = env::var("SENDGRID_API_KEY")
+            .map_err(|_| ServiceError::ConfigError {
+                message: "SENDGRID_API_KEY environment variable required".to_string(),
+            })?;
+            
+        let from_email = env::var("SENDGRID_FROM_EMAIL")
+            .map_err(|_| ServiceError::ConfigError {
+                message: "SENDGRID_FROM_EMAIL environment variable required".to_string(),
+            })?;
+        
+        Ok(Self {
+            client: SendGrid::new(api_key),
+            from_email,
+        })
+    }
+}
+
+#[async_trait]
+impl ServiceIntegration for SendGridService {
+    fn name(&self) -> &'static str {
+        "SendGrid"
+    }
+    
+    fn required_env_vars(&self) -> Vec<&'static str> {
+        vec!["SENDGRID_API_KEY", "SENDGRID_FROM_EMAIL"]
+    }
+    
+    async fn execute(
+        &self,
+        action: &str,
+        parameters: &HashMap<String, serde_json::Value>,
+        context: &ExecutionContext,
+    ) -> Result<ServiceResponse, ServiceError> {
+        let start_time = std::time::Instant::now();
+        
+        match action {
+            "send_email" | "send" => {
+                let to_email = parameters.get("to")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| ServiceError::ConfigError {
+                        message: "'to' email address required".to_string(),
+                    })?;
+                    
+                let subject = parameters.get("subject")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("Notification");
+                    
+                let content = parameters.get("content")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("No content provided");
+                
+                let result = self.send_email(to_email, subject, content).await?;
+                
+                Ok(ServiceResponse {
+                    success: true,
+                    data: serde_json::json!({
+                        "message_id": result,
+                        "to": to_email,
+                        "subject": subject
+                    }),
+                    message: format!("Email sent successfully to {}", to_email),
+                    execution_time_ms: start_time.elapsed().as_millis() as u64,
+                })
+            }
+            _ => Err(ServiceError::ConfigError {
+                message: format!("Unsupported action: {}", action),
+            }),
+        }
+    }
+    
+    async fn mock_execute(
+        &self,
+        action: &str,
+        parameters: &HashMap<String, serde_json::Value>,
+    ) -> Result<ServiceResponse, ServiceError> {
+        let start_time = std::time::Instant::now();
+        
+        // Simulate API call delay
+        tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+        
+        match action {
+            "send_email" | "send" => {
+                let to_email = parameters.get("to")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("mock@example.com");
+                
+                Ok(ServiceResponse {
+                    success: true,
+                    data: serde_json::json!({
+                        "message_id": "mock_message_id_12345",
+                        "to": to_email,
+                        "mock": true
+                    }),
+                    message: format!("Mock: Email would be sent to {}", to_email),
+                    execution_time_ms: start_time.elapsed().as_millis() as u64,
+                })
+            }
+            _ => Err(ServiceError::ConfigError {
+                message: format!("Unsupported action: {}", action),
+            }),
+        }
+    }
+    
+    fn validate_config(&self, config: &ServiceConfig) -> Result<(), ServiceError> {
+        if config.timeout_seconds == 0 {
+            return Err(ServiceError::ConfigError {
+                message: "Timeout must be greater than 0".to_string(),
+            });
+        }
+        Ok(())
+    }
+}
+
+impl SendGridService {
+    async fn send_email(&self, to: &str, subject: &str, content: &str) -> Result<String, ServiceError> {
+        let from = Email::new(&self.from_email);
+        let to = Email::new(to);
+        let content = Content::new()
+            .set_content_type("text/html")
+            .set_value(content);
+        
+        let mail = Mail::new(from, subject, to, content);
+        
+        match self.client.send(&mail).await {
+            Ok(response) => {
+                tracing::info!("SendGrid email sent successfully: {:?}", response);
+                Ok(format!("sendgrid_{}", uuid::Uuid::new_v4()))
+            }
+            Err(e) => {
+                tracing::error!("SendGrid error: {:?}", e);
+                Err(ServiceError::NetworkError {
+                    message: format!("Failed to send email: {}", e),
+                })
+            }
+        }
+    }
+}
+```
+
+## Twilio SMS Service
+
+### Twilio Implementation
+```rust
+use reqwest::Client;
+use base64;
+
+pub struct TwilioService {
+    client: Client,
+    account_sid: String,
+    auth_token: String,
+    from_number: String,
+}
+
+impl TwilioService {
+    pub fn new() -> Result<Self, ServiceError> {
+        let account_sid = env::var("TWILIO_ACCOUNT_SID")
+            .map_err(|_| ServiceError::ConfigError {
+                message: "TWILIO_ACCOUNT_SID environment variable required".to_string(),
+            })?;
+            
+        let auth_token = env::var("TWILIO_AUTH_TOKEN")
+            .map_err(|_| ServiceError::ConfigError {
+                message: "TWILIO_AUTH_TOKEN environment variable required".to_string(),
+            })?;
+            
+        let from_number = env::var("TWILIO_FROM_NUMBER")
+            .map_err(|_| ServiceError::ConfigError {
+                message: "TWILIO_FROM_NUMBER environment variable required".to_string(),
+            })?;
+        
+        Ok(Self {
+            client: Client::new(),
+            account_sid,
+            auth_token,
+            from_number,
+        })
+    }
+}
+
+#[async_trait]
+impl ServiceIntegration for TwilioService {
+    fn name(&self) -> &'static str {
+        "Twilio"
+    }
+    
+    fn required_env_vars(&self) -> Vec<&'static str> {
+        vec!["TWILIO_ACCOUNT_SID", "TWILIO_AUTH_TOKEN", "TWILIO_FROM_NUMBER"]
+    }
+    
+    async fn execute(
+        &self,
+        action: &str,
+        parameters: &HashMap<String, serde_json::Value>,
+        context: &ExecutionContext,
+    ) -> Result<ServiceResponse, ServiceError> {
+        let start_time = std::time::Instant::now();
+        
+        match action {
+            "send_sms" | "send" => {
+                let to_number = parameters.get("to")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| ServiceError::ConfigError {
+                        message: "'to' phone number required".to_string(),
+                    })?;
+                    
+                let message = parameters.get("message")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("No message provided");
+                
+                let result = self.send_sms(to_number, message).await?;
+                
+                Ok(ServiceResponse {
+                    success: true,
+                    data: serde_json::json!({
+                        "message_sid": result,
+                        "to": to_number,
+                        "from": self.from_number
+                    }),
+                    message: format!("SMS sent successfully to {}", to_number),
+                    execution_time_ms: start_time.elapsed().as_millis() as u64,
+                })
+            }
+            _ => Err(ServiceError::ConfigError {
+                message: format!("Unsupported action: {}", action),
+            }),
+        }
+    }
+    
+    async fn mock_execute(
+        &self,
+        action: &str,
+        parameters: &HashMap<String, serde_json::Value>,
+    ) -> Result<ServiceResponse, ServiceError> {
+        let start_time = std::time::Instant::now();
+        
+        tokio::time::sleep(tokio::time::Duration::from_millis(150)).await;
+        
+        match action {
+            "send_sms" | "send" => {
+                let to_number = parameters.get("to")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("+1234567890");
+                
+                Ok(ServiceResponse {
+                    success: true,
+                    data: serde_json::json!({
+                        "message_sid": "mock_sid_67890",
+                        "to": to_number,
+                        "mock": true
+                    }),
+                    message: format!("Mock: SMS would be sent to {}", to_number),
+                    execution_time_ms: start_time.elapsed().as_millis() as u64,
+                })
+            }
+            _ => Err(ServiceError::ConfigError {
+                message: format!("Unsupported action: {}", action),
+            }),
+        }
+    }
+    
+    fn validate_config(&self, config: &ServiceConfig) -> Result<(), ServiceError> {
+        // Validate phone number format, etc.
+        Ok(())
+    }
+}
+
+impl TwilioService {
+    async fn send_sms(&self, to: &str, message: &str) -> Result<String, ServiceError> {
+        let url = format!(
+            "https://api.twilio.com/2010-04-01/Accounts/{}/Messages.json",
+            self.account_sid
+        );
+        
+        let auth = base64::encode(format!("{}:{}", self.account_sid, self.auth_token));
+        
+        let params = [
+            ("To", to),
+            ("From", &self.from_number),
+            ("Body", message),
+        ];
+        
+        let response = self.client
+            .post(&url)
+            .header("Authorization", format!("Basic {}", auth))
+            .form(&params)
+            .send()
+            .await
+            .map_err(|e| ServiceError::NetworkError {
+                message: format!("HTTP request failed: {}", e),
+            })?;
+        
+        if response.status().is_success() {
+            let result: serde_json::Value = response.json().await
+                .map_err(|e| ServiceError::NetworkError {
+                    message: format!("Failed to parse response: {}", e),
+                })?;
+            
+            let message_sid = result["sid"].as_str()
+                .unwrap_or("unknown_sid")
+                .to_string();
+                
+            tracing::info!("Twilio SMS sent successfully: {}", message_sid);
+            Ok(message_sid)
+        } else {
+            let error_text = response.text().await.unwrap_or_default();
+            Err(ServiceError::NetworkError {
+                message: format!("Twilio API error: {}", error_text),
+            })
+        }
+    }
+}
+```
+
+## PostgreSQL Database Service
+
+### PostgreSQL Implementation
+```rust
+use sqlx::{PgPool, Row};
+
+pub struct PostgreSQLService {
+    pool: PgPool,
+}
+
+impl PostgreSQLService {
+    pub async fn new() -> Result<Self, ServiceError> {
+        let database_url = env::var("DATABASE_URL")
+            .map_err(|_| ServiceError::ConfigError {
+                message: "DATABASE_URL environment variable required".to_string(),
+            })?;
+        
+        let pool = PgPool::connect(&database_url)
+            .await
+            .map_err(|e| ServiceError::NetworkError {
+                message: format!("Failed to connect to database: {}", e),
+            })?;
+        
+        Ok(Self { pool })
+    }
+}
+
+#[async_trait]
+impl ServiceIntegration for PostgreSQLService {
+    fn name(&self) -> &'static str {
+        "PostgreSQL"
+    }
+    
+    fn required_env_vars(&self) -> Vec<&'static str> {
+        vec!["DATABASE_URL"]
+    }
+    
+    async fn execute(
+        &self,
+        action: &str,
+        parameters: &HashMap<String, serde_json::Value>,
+        context: &ExecutionContext,
+    ) -> Result<ServiceResponse, ServiceError> {
+        let start_time = std::time::Instant::now();
+        
+        match action {
+            "store" | "insert" => {
+                let table = parameters.get("table")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| ServiceError::ConfigError {
+                        message: "Table name required".to_string(),
+                    })?;
+                    
+                let data = parameters.get("data")
+                    .ok_or_else(|| ServiceError::ConfigError {
+                        message: "Data object required".to_string(),
+                    })?;
+                
+                let result = self.insert_data(table, data).await?;
+                
+                Ok(ServiceResponse {
+                    success: true,
+                    data: serde_json::json!({
+                        "table": table,
+                        "rows_affected": result
+                    }),
+                    message: format!("Data stored successfully in table '{}'", table),
+                    execution_time_ms: start_time.elapsed().as_millis() as u64,
+                })
+            }
+            "query" | "select" => {
+                let sql = parameters.get("sql")
+                    .and_then(|v| v.as_str())
+                    .ok_or_else(|| ServiceError::ConfigError {
+                        message: "SQL query required".to_string(),
+                    })?;
+                
+                let result = self.execute_query(sql).await?;
+                
+                Ok(ServiceResponse {
+                    success: true,
+                    data: result,
+                    message: "Query executed successfully".to_string(),
+                    execution_time_ms: start_time.elapsed().as_millis() as u64,
+                })
+            }
+            _ => Err(ServiceError::ConfigError {
+                message: format!("Unsupported action: {}", action),
+            }),
+        }
+    }
+    
+    async fn mock_execute(
+        &self,
+        action: &str,
+        parameters: &HashMap<String, serde_json::Value>,
+    ) -> Result<ServiceResponse, ServiceError> {
+        let start_time = std::time::Instant::now();
+        
+        tokio::time::sleep(tokio::time::Duration::from_millis(50)).await;
+        
+        match action {
+            "store" | "insert" => {
+                let table = parameters.get("table")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("mock_table");
+                
+                Ok(ServiceResponse {
+                    success: true,
+                    data: serde_json::json!({
+                        "table": table,
+                        "rows_affected": 1,
+                        "mock": true
+                    }),
+                    message: format!("Mock: Data would be stored in table '{}'", table),
+                    execution_time_ms: start_time.elapsed().as_millis() as u64,
+                })
+            }
+            "query" | "select" => {
+                Ok(ServiceResponse {
+                    success: true,
+                    data: serde_json::json!([
+                        {"id": 1, "name": "Mock Record", "created_at": "2024-01-01T00:00:00Z"},
+                        {"id": 2, "name": "Another Mock", "created_at": "2024-01-02T00:00:00Z"}
+                    ]),
+                    message: "Mock: Query would return sample data".to_string(),
+                    execution_time_ms: start_time.elapsed().as_millis() as u64,
+                })
+            }
+            _ => Err(ServiceError::ConfigError {
+                message: format!("Unsupported action: {}", action),
+            }),
+        }
+    }
+    
+    fn validate_config(&self, config: &ServiceConfig) -> Result<(), ServiceError> {
+        // Validate connection string format, etc.
+        Ok(())
+    }
+}
+
+impl PostgreSQLService {
+    async fn insert_data(&self, table: &str, data: &serde_json::Value) -> Result<u64, ServiceError> {
+        // This is a simplified example - in practice, you'd want proper SQL building
+        let query = format!("INSERT INTO {} (data) VALUES ($1)", table);
+        
+        let result = sqlx::query(&query)
+            .bind(data)
+            .execute(&self.pool)
+            .await
+            .map_err(|e| ServiceError::NetworkError {
+                message: format!("Database query failed: {}", e),
+            })?;
+        
+        Ok(result.rows_affected())
+    }
+    
+    async fn execute_query(&self, sql: &str) -> Result<serde_json::Value, ServiceError> {
+        let rows = sqlx::query(sql)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| ServiceError::NetworkError {
+                message: format!("Database query failed: {}", e),
+            })?;
+        
+        let mut results = Vec::new();
+        for row in rows {
+            let mut record = serde_json::Map::new();
+            
+            for (i, column) in row.columns().iter().enumerate() {
+                let name = column.name();
+                let value: Option<String> = row.try_get(i).ok();
+                record.insert(name.to_string(), serde_json::Value::from(value));
+            }
+            
+            results.push(serde_json::Value::Object(record));
+        }
+        
+        Ok(serde_json::Value::Array(results))
+    }
+}
+```
+
+## Service Registry & Factory
+
+### Service Registry
+```rust
+use std::sync::Arc;
+use tokio::sync::RwLock;
+
+pub struct ServiceRegistry {
+    services: RwLock<HashMap<String, Arc<dyn ServiceIntegration>>>,
+}
+
+impl ServiceRegistry {
+    pub fn new() -> Self {
+        Self {
+            services: RwLock::new(HashMap::new()),
+        }
+    }
+    
+    pub async fn register_service(&self, service: Arc<dyn ServiceIntegration>) {
+        let mut services = self.services.write().await;
+        services.insert(service.name().to_string(), service);
+    }
+    
+    pub async fn get_service(&self, name: &str) -> Option<Arc<dyn ServiceIntegration>> {
+        let services = self.services.read().await;
+        services.get(name).cloned()
+    }
+    
+    pub async fn list_services(&self) -> Vec<String> {
+        let services = self.services.read().await;
+        services.keys().cloned().collect()
+    }
+    
+    pub async fn initialize_default_services(&self) -> Result<(), ServiceError> {
+        // Register all default services
+        if let Ok(sendgrid) = SendGridService::new() {
+            self.register_service(Arc::new(sendgrid)).await;
+        }
+        
+        if let Ok(twilio) = TwilioService::new() {
+            self.register_service(Arc::new(twilio)).await;
+        }
+        
+        if let Ok(postgres) = PostgreSQLService::new().await {
+            self.register_service(Arc::new(postgres)).await;
+        }
+        
+        Ok(())
+    }
+}
+```
+
+## Testing Service Integrations
+
+### Service Integration Tests
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio;
+
+    #[tokio::test]
+    async fn test_sendgrid_mock() {
+        let service = SendGridService::new().unwrap();
+        let mut params = HashMap::new();
+        params.insert("to".to_string(), serde_json::Value::String("test@example.com".to_string()));
+        params.insert("subject".to_string(), serde_json::Value::String("Test".to_string()));
+        params.insert("content".to_string(), serde_json::Value::String("Test content".to_string()));
+        
+        let result = service.mock_execute("send_email", &params).await.unwrap();
+        
+        assert!(result.success);
+        assert!(result.message.contains("test@example.com"));
+        assert_eq!(result.data["mock"], true);
+    }
+    
+    #[tokio::test]
+    async fn test_service_registry() {
+        let registry = ServiceRegistry::new();
+        let sendgrid = Arc::new(SendGridService::new().unwrap());
+        
+        registry.register_service(sendgrid.clone()).await;
+        
+        let retrieved = registry.get_service("SendGrid").await;
+        assert!(retrieved.is_some());
+        
+        let services = registry.list_services().await;
+        assert!(services.contains(&"SendGrid".to_string()));
+    }
+}
+```
+
+---
+description:
+globs:
+alwaysApply: false
+---

@@ -1,0 +1,679 @@
+# Talk++ Testing Guidelines
+
+## Testing Strategy Overview
+
+### Test Pyramid Structure
+```
+                    E2E Tests
+                  /           \
+             Integration Tests
+           /                   \
+      Unit Tests              Component Tests
+    /           \             /              \
+Compiler Tests  Runtime Tests  CLI Tests  Service Tests
+```
+
+### Testing Categories
+- **Unit Tests**: Individual functions and methods
+- **Integration Tests**: Component interactions
+- **End-to-End Tests**: Complete workflow testing
+- **Performance Tests**: Benchmarks and load testing
+- **Property Tests**: Fuzz testing with arbitrary inputs
+
+## Compiler Testing
+
+### Lexer Testing Patterns
+```rust
+#[cfg(test)]
+mod lexer_tests {
+    use super::*;
+    use crate::lexer::{tokenize, Token};
+
+    #[test]
+    fn test_basic_conditional_tokens() {
+        let input = "if new user registers then validate email using SendGrid";
+        let tokens = tokenize(input).unwrap();
+        
+        let expected_tokens = vec![
+            Token::If,
+            Token::Identifier("new".to_string()),
+            Token::Identifier("user".to_string()),
+            Token::Identifier("registers".to_string()),
+            Token::Then,
+            Token::Validate,
+            Token::Identifier("email".to_string()),
+            Token::Using,
+            Token::Service("SendGrid".to_string()),
+        ];
+        
+        assert_eq!(tokens.len(), expected_tokens.len());
+        for (actual, expected) in tokens.iter().zip(expected_tokens.iter()) {
+            assert_eq!(&actual.token, expected);
+        }
+    }
+    
+    #[test]
+    fn test_string_literal_parsing() {
+        let input = r#"store user data in table "users""#;
+        let tokens = tokenize(input).unwrap();
+        
+        assert!(matches!(tokens.last().unwrap().token, Token::String(ref s) if s == "users"));
+    }
+    
+    #[test]
+    fn test_lexer_error_recovery() {
+        let input = "if @ invalid $ tokens";
+        let result = tokenize(input);
+        
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            CompilerError::LexicalError { position, message } => {
+                assert!(position > 0);
+                assert!(message.contains("Invalid token"));
+            }
+            _ => panic!("Expected lexical error"),
+        }
+    }
+    
+    #[test]
+    fn test_line_column_tracking() {
+        let input = "if user\nregisters\nthen validate";
+        let tokens = tokenize(input).unwrap();
+        
+        // Verify line/column information is accurate
+        assert_eq!(tokens[0].line, 1);  // "if"
+        assert_eq!(tokens[2].line, 2);  // "registers"
+        assert_eq!(tokens[3].line, 3);  // "then"
+    }
+}
+```
+
+### Parser Testing Patterns
+```rust
+#[cfg(test)]
+mod parser_tests {
+    use super::*;
+    use crate::parser::parse;
+    use crate::lexer::tokenize;
+
+    fn parse_input(input: &str) -> Result<Program, CompilerError> {
+        let tokens = tokenize(input)?;
+        parse(tokens)
+    }
+
+    #[test]
+    fn test_simple_conditional_parsing() {
+        let input = "if new user registers then validate email using SendGrid";
+        let program = parse_input(input).unwrap();
+        
+        assert_eq!(program.statements.len(), 1);
+        
+        match &program.statements[0] {
+            Statement::Conditional(cond) => {
+                assert!(matches!(cond.condition, Condition::Event(_)));
+                assert_eq!(cond.then_actions.len(), 1);
+                assert!(cond.else_actions.is_none());
+            }
+            _ => panic!("Expected conditional statement"),
+        }
+    }
+    
+    #[test]
+    fn test_nested_conditionals() {
+        let input = r#"
+        if user registers then
+            if email valid then
+                send welcome message using SendGrid
+            else
+                send error notification
+        "#;
+        
+        let program = parse_input(input).unwrap();
+        // Verify nested structure is correctly parsed
+        assert!(program.statements.len() > 0);
+    }
+    
+    #[test]
+    fn test_parser_error_messages() {
+        let test_cases = vec![
+            ("if then validate", "Expected condition after 'if'"),
+            ("if user validates then", "Expected action after 'then'"),
+            ("user registers then validate", "Expected 'if' or 'when' at start"),
+        ];
+        
+        for (input, expected_message) in test_cases {
+            let result = parse_input(input);
+            assert!(result.is_err());
+            
+            let error_message = result.unwrap_err().to_string();
+            assert!(error_message.contains(expected_message), 
+                   "Error '{}' should contain '{}'", error_message, expected_message);
+        }
+    }
+}
+```
+
+### Code Generation Testing
+```rust
+#[cfg(test)]
+mod codegen_tests {
+    use super::*;
+    use crate::{Compiler, CompilerConfig, TargetLanguage};
+
+    #[test]
+    fn test_rust_code_generation() {
+        let config = CompilerConfig {
+            target_language: TargetLanguage::Rust,
+            optimization_level: OptimizationLevel::Debug,
+            debug_mode: true,
+        };
+        
+        let compiler = Compiler::with_config(config);
+        let input = "if new user registers then validate email using SendGrid";
+        let generated = compiler.compile(input).unwrap();
+        
+        // Verify generated Rust code structure
+        assert!(generated.contains("async fn handler"));
+        assert!(generated.contains("use anyhow::Result"));
+        assert!(generated.contains("SendGrid"));
+        assert!(generated.contains("tracing::info"));
+    }
+    
+    #[test]
+    fn test_python_code_generation() {
+        let config = CompilerConfig {
+            target_language: TargetLanguage::Python,
+            optimization_level: OptimizationLevel::Release,
+            debug_mode: false,
+        };
+        
+        let compiler = Compiler::with_config(config);
+        let input = "send welcome message using Twilio";
+        let generated = compiler.compile(input).unwrap();
+        
+        // Verify Python-specific patterns
+        assert!(generated.contains("#!/usr/bin/env python3"));
+        assert!(generated.contains("async def handler"));
+        assert!(generated.contains("import asyncio"));
+        assert!(generated.contains("from typing import"));
+    }
+    
+    #[test]
+    fn test_cross_language_consistency() {
+        let input = "if payment received then send confirmation email using SendGrid";
+        
+        let languages = vec![
+            TargetLanguage::Rust,
+            TargetLanguage::Python,
+            TargetLanguage::JavaScript,
+            TargetLanguage::TypeScript,
+        ];
+        
+        for language in languages {
+            let config = CompilerConfig {
+                target_language: language.clone(),
+                optimization_level: OptimizationLevel::Debug,
+                debug_mode: true,
+            };
+            
+            let compiler = Compiler::with_config(config);
+            let generated = compiler.compile(input).unwrap();
+            
+            // All generated code should contain these elements
+            assert!(generated.contains("SendGrid"), "Missing SendGrid in {:?}", language);
+            assert!(!generated.is_empty(), "Empty generation for {:?}", language);
+        }
+    }
+}
+```
+
+## Runtime Testing
+
+### Service Integration Testing
+```rust
+#[cfg(test)]
+mod service_tests {
+    use super::*;
+    use std::collections::HashMap;
+    use tokio;
+
+    #[tokio::test]
+    async fn test_sendgrid_mock_execution() {
+        let service = SendGridService::new().unwrap();
+        
+        let mut params = HashMap::new();
+        params.insert("to".to_string(), serde_json::Value::String("test@example.com".to_string()));
+        params.insert("subject".to_string(), serde_json::Value::String("Test Subject".to_string()));
+        params.insert("content".to_string(), serde_json::Value::String("Test content".to_string()));
+        
+        let result = service.mock_execute("send_email", &params).await.unwrap();
+        
+        assert!(result.success);
+        assert!(result.message.contains("test@example.com"));
+        assert!(result.execution_time_ms > 0);
+        assert_eq!(result.data["mock"], serde_json::Value::Bool(true));
+    }
+    
+    #[tokio::test]
+    async fn test_service_registry() {
+        let registry = ServiceRegistry::new();
+        
+        // Register mock services
+        registry.register_service(Arc::new(MockSendGridService::new())).await;
+        registry.register_service(Arc::new(MockTwilioService::new())).await;
+        
+        let services = registry.list_services().await;
+        assert!(services.contains(&"SendGrid".to_string()));
+        assert!(services.contains(&"Twilio".to_string()));
+        
+        let sendgrid = registry.get_service("SendGrid").await;
+        assert!(sendgrid.is_some());
+    }
+    
+    #[tokio::test]
+    async fn test_service_error_handling() {
+        let service = MockFailingService::new();
+        let params = HashMap::new();
+        
+        let result = service.execute("failing_action", &params, &ExecutionContext::default()).await;
+        
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            ServiceError::NetworkError { message } => {
+                assert!(message.contains("Mock failure"));
+            }
+            _ => panic!("Expected network error"),
+        }
+    }
+}
+```
+
+### Runtime Execution Testing
+```rust
+#[cfg(test)]
+mod runtime_tests {
+    use super::*;
+    use uuid::Uuid;
+
+    #[tokio::test]
+    async fn test_function_deployment() {
+        let mut runtime = Runtime::new().unwrap();
+        
+        let code = r#"
+        pub async fn handler(event: Event) -> Result<Response> {
+            Ok(Response::success("Test function"))
+        }
+        "#;
+        
+        let metadata = FunctionMetadata {
+            id: Uuid::new_v4(),
+            name: "test-function".to_string(),
+            language: "rust".to_string(),
+            version: "1.0.0".to_string(),
+            created_at: chrono::Utc::now(),
+        };
+        
+        let function_id = runtime.deploy(code, metadata).await.unwrap();
+        assert!(!function_id.is_nil());
+        
+        let functions = runtime.list_functions();
+        assert_eq!(functions.len(), 1);
+        assert_eq!(functions[0].name, "test-function");
+    }
+    
+    #[tokio::test]
+    async fn test_function_execution() {
+        let runtime = Runtime::new().unwrap();
+        let function_id = Uuid::new_v4();
+        
+        let event = Event {
+            data: serde_json::json!({"test": "data"}),
+            context: HashMap::new(),
+        };
+        
+        let result = runtime.execute(function_id, event).await.unwrap();
+        assert!(result.success);
+    }
+}
+```
+
+## CLI Testing
+
+### CLI Integration Testing
+```rust
+#[cfg(test)]
+mod cli_tests {
+    use assert_cmd::Command;
+    use predicates::prelude::*;
+    use tempfile::TempDir;
+    use std::fs;
+
+    #[test]
+    fn test_talkppc_build_command() {
+        let temp_dir = TempDir::new().unwrap();
+        let input_path = temp_dir.path().join("test.tpp");
+        let output_path = temp_dir.path().join("test.rs");
+        
+        // Create test DSL file
+        fs::write(&input_path, "if new user registers then validate email using SendGrid").unwrap();
+        
+        let mut cmd = Command::cargo_bin("talkppc").unwrap();
+        cmd.args(&[
+            "build",
+            "--input", input_path.to_str().unwrap(),
+            "--output", output_path.to_str().unwrap(),
+            "--target", "rust",
+        ]);
+        
+        cmd.assert()
+            .success()
+            .stdout(predicate::str::contains("Successfully compiled"));
+        
+        // Verify output file exists and contains expected content
+        assert!(output_path.exists());
+        let generated_content = fs::read_to_string(&output_path).unwrap();
+        assert!(generated_content.contains("async fn handler"));
+    }
+    
+    #[test]
+    fn test_talkppc_check_command() {
+        let temp_dir = TempDir::new().unwrap();
+        let input_path = temp_dir.path().join("valid.tpp");
+        
+        fs::write(&input_path, "if user registers then send welcome email").unwrap();
+        
+        let mut cmd = Command::cargo_bin("talkppc").unwrap();
+        cmd.args(&["check", "--input", input_path.to_str().unwrap()]);
+        
+        cmd.assert()
+            .success()
+            .stdout(predicate::str::contains("Syntax is valid"));
+    }
+    
+    #[test]
+    fn test_talkppc_invalid_input() {
+        let temp_dir = TempDir::new().unwrap();
+        let input_path = temp_dir.path().join("invalid.tpp");
+        
+        fs::write(&input_path, "invalid syntax here").unwrap();
+        
+        let mut cmd = Command::cargo_bin("talkppc").unwrap();
+        cmd.args(&["check", "--input", input_path.to_str().unwrap()]);
+        
+        cmd.assert()
+            .failure()
+            .stderr(predicate::str::contains("Syntax error"));
+    }
+    
+    #[test]
+    fn test_talkpprun_simulate() {
+        let temp_dir = TempDir::new().unwrap();
+        let function_path = temp_dir.path().join("function.rs");
+        
+        fs::write(&function_path, r#"
+            pub async fn handler(event: serde_json::Value) -> serde_json::Value {
+                serde_json::json!({"success": true, "message": "Test response"})
+            }
+        "#).unwrap();
+        
+        let mut cmd = Command::cargo_bin("talkpprun").unwrap();
+        cmd.args(&[
+            "simulate",
+            "--input", function_path.to_str().unwrap(),
+            "--mock",
+            "--event", r#"{"user": "test@example.com"}"#,
+        ]);
+        
+        cmd.assert()
+            .success()
+            .stdout(predicate::str::contains("Simulation completed"));
+    }
+}
+```
+
+## Performance Testing
+
+### Benchmark Testing
+```rust
+// benches/compiler_bench.rs
+use criterion::{criterion_group, criterion_main, Criterion, BenchmarkId};
+use talkpp_compiler::{Compiler, CompilerConfig, TargetLanguage};
+
+fn benchmark_compilation(c: &mut Criterion) {
+    let test_cases = vec![
+        ("simple", "if user registers then validate email"),
+        ("complex", include_str!("../examples/advanced.tpp")),
+        ("large", create_large_dsl_program(100)), // 100 conditions
+    ];
+    
+    let mut group = c.benchmark_group("compilation");
+    
+    for (name, input) in test_cases {
+        group.bench_with_input(BenchmarkId::new("rust", name), &input, |b, input| {
+            let config = CompilerConfig {
+                target_language: TargetLanguage::Rust,
+                optimization_level: OptimizationLevel::Release,
+                debug_mode: false,
+            };
+            let compiler = Compiler::with_config(config);
+            
+            b.iter(|| compiler.compile(input).unwrap());
+        });
+        
+        group.bench_with_input(BenchmarkId::new("python", name), &input, |b, input| {
+            let config = CompilerConfig {
+                target_language: TargetLanguage::Python,
+                optimization_level: OptimizationLevel::Release,
+                debug_mode: false,
+            };
+            let compiler = Compiler::with_config(config);
+            
+            b.iter(|| compiler.compile(input).unwrap());
+        });
+    }
+    
+    group.finish();
+}
+
+fn benchmark_parsing(c: &mut Criterion) {
+    let input = include_str!("../examples/advanced.tpp");
+    
+    c.bench_function("tokenize", |b| {
+        b.iter(|| talkpp_compiler::tokenize(input).unwrap());
+    });
+    
+    c.bench_function("parse", |b| {
+        let tokens = talkpp_compiler::tokenize(input).unwrap();
+        b.iter(|| talkpp_compiler::parse(tokens.clone()).unwrap());
+    });
+}
+
+criterion_group!(benches, benchmark_compilation, benchmark_parsing);
+criterion_main!(benches);
+
+fn create_large_dsl_program(count: usize) -> String {
+    (0..count)
+        .map(|i| format!("if user_{} registers then validate email_{} using SendGrid", i, i))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+```
+
+### Load Testing
+```rust
+#[cfg(test)]
+mod load_tests {
+    use super::*;
+    use tokio::time::{timeout, Duration};
+    use futures::future::join_all;
+
+    #[tokio::test]
+    async fn test_concurrent_compilation() {
+        let compiler = Arc::new(Compiler::new());
+        let input = "if user registers then send email using SendGrid";
+        
+        // Spawn 100 concurrent compilation tasks
+        let tasks: Vec<_> = (0..100)
+            .map(|_| {
+                let compiler = compiler.clone();
+                let input = input.to_string();
+                tokio::spawn(async move {
+                    compiler.compile(&input).unwrap()
+                })
+            })
+            .collect();
+        
+        // All should complete within 10 seconds
+        let results = timeout(Duration::from_secs(10), join_all(tasks))
+            .await
+            .expect("Compilation tasks should complete within timeout");
+        
+        // Verify all compilations succeeded
+        for result in results {
+            assert!(result.is_ok());
+        }
+    }
+    
+    #[tokio::test]
+    async fn test_service_registry_concurrency() {
+        let registry = Arc::new(ServiceRegistry::new());
+        registry.initialize_default_services().await.unwrap();
+        
+        // Concurrent service lookups
+        let tasks: Vec<_> = (0..50)
+            .map(|_| {
+                let registry = registry.clone();
+                tokio::spawn(async move {
+                    registry.get_service("SendGrid").await.is_some()
+                })
+            })
+            .collect();
+        
+        let results = join_all(tasks).await;
+        
+        // All lookups should succeed
+        for result in results {
+            assert!(result.unwrap());
+        }
+    }
+}
+```
+
+## Property-Based Testing
+
+### Fuzz Testing with Arbitrary Inputs
+```rust
+#[cfg(test)]
+mod property_tests {
+    use super::*;
+    use proptest::prelude::*;
+
+    proptest! {
+        #[test]
+        fn test_lexer_never_panics(input in ".*") {
+            // Lexer should never panic, even on invalid input
+            let _ = tokenize(&input); // May fail, but shouldn't panic
+        }
+        
+        #[test]
+        fn test_parser_error_recovery(
+            conditions in prop::collection::vec("[a-z]+ [a-z]+", 1..10),
+            actions in prop::collection::vec("(send|store|validate) [a-z]+", 1..5)
+        ) {
+            let input = format!(
+                "if {} then {}",
+                conditions.join(" and "),
+                actions.join(" then ")
+            );
+            
+            // Parser should either succeed or fail gracefully
+            match tokenize(&input).and_then(|tokens| parse(tokens)) {
+                Ok(_) => {}, // Success is fine
+                Err(CompilerError::ParseError { .. }) => {}, // Parse errors are expected
+                Err(CompilerError::LexicalError { .. }) => {}, // Lexical errors are expected
+                Err(e) => panic!("Unexpected error type: {:?}", e),
+            }
+        }
+    }
+}
+```
+
+## Test Organization & Utilities
+
+### Test Utilities Module
+```rust
+// tests/common/mod.rs - Shared test utilities
+use tempfile::TempDir;
+use std::fs;
+
+pub struct TestEnvironment {
+    pub temp_dir: TempDir,
+}
+
+impl TestEnvironment {
+    pub fn new() -> Self {
+        Self {
+            temp_dir: TempDir::new().unwrap(),
+        }
+    }
+    
+    pub fn create_dsl_file(&self, name: &str, content: &str) -> std::path::PathBuf {
+        let path = self.temp_dir.path().join(format!("{}.tpp", name));
+        fs::write(&path, content).unwrap();
+        path
+    }
+    
+    pub fn create_env_file(&self, vars: &[(&str, &str)]) -> std::path::PathBuf {
+        let path = self.temp_dir.path().join(".env");
+        let content = vars
+            .iter()
+            .map(|(k, v)| format!("{}={}", k, v))
+            .collect::<Vec<_>>()
+            .join("\n");
+        fs::write(&path, content).unwrap();
+        path
+    }
+}
+
+pub fn assert_contains_all(text: &str, patterns: &[&str]) {
+    for pattern in patterns {
+        assert!(text.contains(pattern), "Text should contain '{}'\nActual text:\n{}", pattern, text);
+    }
+}
+
+pub fn create_mock_compiler() -> Compiler {
+    Compiler::with_config(CompilerConfig {
+        target_language: TargetLanguage::Rust,
+        optimization_level: OptimizationLevel::Debug,
+        debug_mode: true,
+    })
+}
+```
+
+### Test Configuration
+```toml
+# Cargo.toml test configuration
+[profile.test]
+opt-level = 1  # Faster test compilation
+debug = true   # Keep debug info for better test failures
+
+[[test]]
+name = "integration"
+path = "tests/integration_test.rs"
+
+[[test]]
+name = "end_to_end"
+path = "tests/e2e_test.rs"
+required-features = ["integration-tests"]
+
+[[bench]]
+name = "compiler_bench"
+harness = false
+required-features = ["bench"]
+```
+
+---
+description:
+globs:
+alwaysApply: false
+---

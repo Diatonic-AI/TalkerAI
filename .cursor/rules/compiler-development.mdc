@@ -1,0 +1,427 @@
+# Talk++ Compiler Development Guidelines
+
+## DSL Design Philosophy
+
+### Natural Language Principles
+- Design DSL to read like natural English sentences
+- Use common English keywords: `if`, `then`, `else`, `when`, `using`, `with`
+- Support both active and passive voice where natural
+- Allow optional words that don't change meaning (articles, prepositions)
+
+### Grammar Rules
+```talk++
+// Conditional structure
+if <condition> then <action> [then <action>...] [else <action>...]
+when <event> then <action> [then <action>...]
+
+// Actions with services
+<verb> <target> using <service>
+<verb> <target> with <configuration>
+
+// Variable assignments
+<variable>: <value>
+
+// Comments
+// Single line comments supported
+```
+
+## Lexical Analysis (lexer.rs)
+
+### Token Design Patterns
+```rust
+#[derive(Logos, Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum Token {
+    // Keywords - exact matches
+    #[token("if")]
+    If,
+    
+    #[token("then")]
+    Then,
+    
+    // Action verbs - support variations
+    #[token("send")]
+    #[token("sends")]
+    Send,
+    
+    // Services - capitalized identifiers
+    #[regex(r"[A-Z][a-zA-Z0-9]*", |lex| lex.slice().to_owned())]
+    Service(String),
+    
+    // String literals - multiple quote styles
+    #[regex(r#""([^"\\]|\\.)*""#, |lex| {
+        let s = lex.slice();
+        s[1..s.len()-1].to_owned() // Remove quotes
+    })]
+    #[regex(r#"`([^`\\]|\\.)*`"#, |lex| {
+        let s = lex.slice();
+        s[1..s.len()-1].to_owned() // Remove backticks
+    })]
+    String(String),
+    
+    // Skip whitespace and comments
+    #[regex(r"[ \t\n\f]+", logos::skip)]
+    #[regex(r"//[^\n]*", logos::skip)]
+    #[error]
+    Error,
+}
+```
+
+### Error Recovery
+```rust
+pub fn tokenize(input: &str) -> Result<Vec<TokenWithSpan>, CompilerError> {
+    let mut tokens = Vec::new();
+    let mut lexer = Token::lexer(input);
+    
+    while let Some(token) = lexer.next() {
+        match token {
+            Token::Error => {
+                return Err(CompilerError::lexical(
+                    lexer.span().start,
+                    format!("Invalid token: '{}'", &input[lexer.span()]),
+                ));
+            }
+            _ => {
+                tokens.push(TokenWithSpan {
+                    token,
+                    span: lexer.span(),
+                    line: calculate_line(input, lexer.span().start),
+                    column: calculate_column(input, lexer.span().start),
+                });
+            }
+        }
+    }
+    Ok(tokens)
+}
+```
+
+## Parsing (parser.rs)
+
+### Recursive Descent Strategy
+```rust
+impl Parser {
+    // Top-level parsing
+    pub fn parse(&mut self) -> Result<Program, CompilerError> {
+        let mut program = Program::new();
+        
+        while !self.is_at_end() {
+            match self.parse_statement()? {
+                Some(stmt) => program.add_statement(stmt),
+                None => continue, // Skip empty lines/comments
+            }
+        }
+        
+        Ok(program)
+    }
+    
+    // Statement-level parsing with clear error messages
+    fn parse_conditional(&mut self) -> Result<ConditionalStatement, CompilerError> {
+        let start_token = self.peek();
+        self.advance(); // consume 'if' or 'when'
+        
+        let condition = self.parse_condition()
+            .map_err(|e| self.enhance_error(e, "Expected condition after 'if'"))?;
+        
+        self.expect(Token::Then, "Expected 'then' after condition")?;
+        
+        let then_actions = self.parse_action_sequence()
+            .map_err(|e| self.enhance_error(e, "Expected actions after 'then'"))?;
+        
+        // Optional else clause
+        let else_actions = if self.check(&Token::Else) {
+            self.advance();
+            Some(self.parse_action_sequence()?)
+        } else {
+            None
+        };
+        
+        Ok(ConditionalStatement {
+            condition,
+            then_actions,
+            else_actions,
+        })
+    }
+}
+```
+
+### Error Enhancement
+```rust
+impl Parser {
+    fn enhance_error(&self, error: CompilerError, context: &str) -> CompilerError {
+        match error {
+            CompilerError::ParseError { line, column, message } => {
+                CompilerError::ParseError {
+                    line,
+                    column,
+                    message: format!("{}: {}", context, message),
+                }
+            }
+            _ => error,
+        }
+    }
+    
+    fn expect(&mut self, expected: Token, message: &str) -> Result<(), CompilerError> {
+        if self.check(&expected) {
+            self.advance();
+            Ok(())
+        } else {
+            let current = self.peek();
+            Err(CompilerError::parse(
+                current.line,
+                current.column,
+                message,
+            ))
+        }
+    }
+}
+```
+
+## AST Design (ast.rs)
+
+### Hierarchical Structure
+```rust
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Program {
+    pub statements: Vec<Statement>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum Statement {
+    Conditional(ConditionalStatement),
+    Action(ActionStatement),
+    Assignment(AssignmentStatement),
+    Comment(String),
+}
+
+// Rich condition types for natural language
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum Condition {
+    Event(EventCondition),      // "new user registers"
+    Comparison(ComparisonCondition), // "file size > 1000000"
+    Logical(LogicalCondition),  // "A and B"
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct EventCondition {
+    pub subject: String,        // "new user"
+    pub action: String,         // "registers"
+    pub context: Option<String>, // "in system"
+}
+```
+
+### Builder Patterns
+```rust
+impl ActionStatement {
+    pub fn new(action: Action) -> Self {
+        Self {
+            action,
+            target: None,
+            service: None,
+            parameters: HashMap::new(),
+        }
+    }
+    
+    pub fn with_target(mut self, target: Expression) -> Self {
+        self.target = Some(target);
+        self
+    }
+    
+    pub fn with_service(mut self, service: ServiceCall) -> Self {
+        self.service = Some(service);
+        self
+    }
+}
+```
+
+## Code Generation (codegen.rs)
+
+### Multi-Language Architecture
+```rust
+pub fn generate(program: &Program, config: &CompilerConfig) -> Result<String, CompilerError> {
+    match config.target_language {
+        TargetLanguage::Rust => RustGenerator::new().generate(program, config),
+        TargetLanguage::Python => PythonGenerator::new().generate(program, config),
+        TargetLanguage::JavaScript => JSGenerator::new().generate(program, config),
+        TargetLanguage::TypeScript => TSGenerator::new().generate(program, config),
+        TargetLanguage::Bash => BashGenerator::new().generate(program, config),
+    }
+}
+
+trait CodeGenerator {
+    fn generate(&self, program: &Program, config: &CompilerConfig) -> Result<String, CompilerError>;
+    fn generate_imports(&self, program: &Program) -> String;
+    fn generate_function_signature(&self) -> String;
+    fn generate_error_handling(&self) -> String;
+}
+```
+
+### Service Integration Templates
+```rust
+struct ServiceTemplates;
+
+impl ServiceTemplates {
+    fn sendgrid_rust() -> &'static str {
+        r#"
+// SendGrid email service integration
+use sendgrid::v3::*;
+
+async fn send_email_sendgrid(to: &str, subject: &str, content: &str) -> Result<()> {
+    let from = Email::new(env::var("FROM_EMAIL")?);
+    let to = Email::new(to);
+    let content = Content::new()
+        .set_content_type("text/html")
+        .set_value(content);
+    
+    let mail = Mail::new(from, subject, to, content);
+    let sg = SendGrid::new(env::var("SENDGRID_API_KEY")?);
+    
+    sg.send(&mail).await?;
+    Ok(())
+}
+        "#
+    }
+    
+    fn twilio_python() -> &'static str {
+        r#"
+# Twilio SMS service integration
+from twilio.rest import Client
+import os
+
+async def send_sms_twilio(to: str, message: str) -> None:
+    account_sid = os.environ['TWILIO_ACCOUNT_SID']
+    auth_token = os.environ['TWILIO_AUTH_TOKEN']
+    from_number = os.environ['TWILIO_FROM_NUMBER']
+    
+    client = Client(account_sid, auth_token)
+    
+    message = client.messages.create(
+        body=message,
+        from_=from_number,
+        to=to
+    )
+    
+    return message.sid
+        "#
+    }
+}
+```
+
+## Testing Strategies
+
+### Unit Test Structure
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_lexer_conditional() {
+        let input = "if new user registers then validate email using SendGrid";
+        let tokens = tokenize(input).unwrap();
+        
+        // Verify token sequence
+        let expected = vec![
+            Token::If,
+            Token::Identifier("new".to_string()),
+            Token::Identifier("user".to_string()),
+            Token::Identifier("registers".to_string()),
+            Token::Then,
+            Token::Validate,
+            Token::Identifier("email".to_string()),
+            Token::Using,
+            Token::Service("SendGrid".to_string()),
+        ];
+        
+        assert_eq!(tokens.len(), expected.len());
+        for (actual, expected) in tokens.iter().zip(expected.iter()) {
+            assert_eq!(&actual.token, expected);
+        }
+    }
+    
+    #[test]
+    fn test_parser_error_recovery() {
+        let input = "if then validate email"; // Missing condition
+        let result = parse_tokens(tokenize(input).unwrap());
+        
+        assert!(result.is_err());
+        match result.unwrap_err() {
+            CompilerError::ParseError { message, .. } => {
+                assert!(message.contains("Expected condition"));
+            }
+            _ => panic!("Expected parse error"),
+        }
+    }
+}
+```
+
+### Integration Tests
+```rust
+// tests/compiler_integration.rs
+use std::fs;
+use talkpp_compiler::*;
+
+#[test]
+fn test_compile_hello_example() {
+    let source = fs::read_to_string("examples/hello.tpp").unwrap();
+    let compiler = Compiler::new();
+    let result = compiler.compile(&source).unwrap();
+    
+    // Verify generated Rust code structure
+    assert!(result.contains("async fn handler"));
+    assert!(result.contains("SendGrid"));
+    assert!(result.contains("PostgreSQL"));
+    assert!(result.contains("Twilio"));
+}
+
+#[test]
+fn test_compile_advanced_example() {
+    let source = fs::read_to_string("examples/advanced.tpp").unwrap();
+    let config = CompilerConfig {
+        target_language: TargetLanguage::Python,
+        optimization_level: OptimizationLevel::Release,
+        debug_mode: false,
+    };
+    
+    let compiler = Compiler::with_config(config);
+    let result = compiler.compile(&source).unwrap();
+    
+    // Verify Python-specific patterns
+    assert!(result.contains("def handler"));
+    assert!(result.contains("async def"));
+    assert!(result.contains("import"));
+}
+```
+
+## Performance Optimization
+
+### Parser Optimizations
+```rust
+// Use string interning for repeated identifiers
+use string_cache::DefaultAtom as Atom;
+
+#[derive(Debug, Clone)]
+pub struct OptimizedToken {
+    pub token_type: TokenType,
+    pub value: Option<Atom>, // Interned strings
+    pub span: Range<usize>,
+}
+```
+
+### Memory Management
+```rust
+// Use arena allocation for AST nodes
+use typed_arena::Arena;
+
+pub struct Parser<'a> {
+    tokens: &'a [Token],
+    current: usize,
+    arena: &'a Arena<AstNode>,
+}
+
+// This reduces allocation overhead for large ASTs
+```
+
+---
+description:
+globs:
+alwaysApply: false
+---

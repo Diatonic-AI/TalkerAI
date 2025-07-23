@@ -1,0 +1,526 @@
+# Talk++ CLI Development Guidelines
+
+## CLI Architecture Principles
+
+### Command Structure
+- **`talkppc`**: Compiler CLI for DSL compilation and validation
+- **`talkpprun`**: Runtime CLI for simulation and execution
+- Use subcommands for related functionality
+- Provide both verbose and quiet modes
+- Include progress indicators for long operations
+
+### User Experience Standards
+- Clear, actionable error messages with suggestions
+- Colored output for better readability
+- Consistent flag naming across tools
+- Help text that includes examples
+- Support for both short and long flag forms
+
+## Clap Configuration Patterns
+
+### Main CLI Structure
+```rust
+use clap::{Parser, Subcommand};
+use colored::*;
+
+#[derive(Parser)]
+#[command(name = "talkppc")]
+#[command(about = "Talk++ Compiler - Compile Talk++ DSL to executable code")]
+#[command(version = "0.2.0")]
+#[command(long_about = None)]
+struct Cli {
+    /// Enable verbose output
+    #[arg(short = 'v', long = "verbose", global = true)]
+    verbose: bool,
+    
+    /// Suppress output except errors
+    #[arg(short = 'q', long = "quiet", global = true)]
+    quiet: bool,
+    
+    #[command(subcommand)]
+    command: Commands,
+}
+
+#[derive(Subcommand)]
+enum Commands {
+    /// Compile a Talk++ source file
+    Build {
+        /// Input Talk++ source file
+        #[arg(short = 'i', long = "input", value_name = "FILE")]
+        input: PathBuf,
+        
+        /// Output file path
+        #[arg(short = 'o', long = "output", value_name = "FILE")]
+        output: Option<PathBuf>,
+        
+        /// Target language
+        #[arg(short = 't', long = "target", default_value = "rust")]
+        #[arg(value_parser = ["rust", "python", "javascript", "typescript", "bash"])]
+        target: String,
+        
+        /// Optimization level
+        #[arg(long = "optimization", default_value = "debug")]
+        #[arg(value_parser = ["debug", "release", "size"])]
+        optimization: String,
+        
+        /// Enable debug mode
+        #[arg(long = "debug")]
+        debug: bool,
+    },
+    
+    /// Validate Talk++ syntax without compilation
+    Check {
+        /// Input Talk++ source file
+        #[arg(short = 'i', long = "input", value_name = "FILE")]
+        input: PathBuf,
+    },
+    
+    /// Show compiler information and supported languages
+    Info,
+}
+```
+
+### Error Handling & User Feedback
+```rust
+use anyhow::{Context, Result};
+use colored::*;
+use indicatif::{ProgressBar, ProgressStyle};
+
+fn main() -> Result<()> {
+    let cli = Cli::parse();
+    
+    // Set up tracing based on verbosity
+    init_logging(cli.verbose, cli.quiet)?;
+    
+    match cli.command {
+        Commands::Build { input, output, target, optimization, debug } => {
+            build_command(input, output, target, optimization, debug, cli.verbose)
+                .await
+                .with_context(|| "Build command failed")
+        }
+        Commands::Check { input } => {
+            check_command(input, cli.verbose)
+                .await
+                .with_context(|| "Check command failed")
+        }
+        Commands::Info => {
+            info_command();
+            Ok(())
+        }
+    }
+}
+
+fn init_logging(verbose: bool, quiet: bool) -> Result<()> {
+    let level = match (verbose, quiet) {
+        (true, _) => tracing::Level::DEBUG,
+        (false, true) => tracing::Level::ERROR,
+        (false, false) => tracing::Level::INFO,
+    };
+    
+    tracing_subscriber::fmt()
+        .with_max_level(level)
+        .with_target(false)
+        .init();
+        
+    Ok(())
+}
+```
+
+## Output Formatting & Progress
+
+### Colored Output Patterns
+```rust
+use colored::*;
+
+pub struct OutputFormatter {
+    verbose: bool,
+    quiet: bool,
+}
+
+impl OutputFormatter {
+    pub fn new(verbose: bool, quiet: bool) -> Self {
+        Self { verbose, quiet }
+    }
+    
+    pub fn success(&self, message: &str) {
+        if !self.quiet {
+            println!("{} {}", "✓".green().bold(), message);
+        }
+    }
+    
+    pub fn error(&self, message: &str) {
+        eprintln!("{} {}", "✗".red().bold(), message);
+    }
+    
+    pub fn warning(&self, message: &str) {
+        if !self.quiet {
+            println!("{} {}", "⚠".yellow().bold(), message);
+        }
+    }
+    
+    pub fn info(&self, message: &str) {
+        if self.verbose && !self.quiet {
+            println!("{} {}", "ℹ".blue().bold(), message);
+        }
+    }
+    
+    pub fn step(&self, step: &str, message: &str) {
+        if !self.quiet {
+            println!("{} {} {}", step.cyan().bold(), "→".dim(), message);
+        }
+    }
+}
+```
+
+### Progress Indicators
+```rust
+use indicatif::{ProgressBar, ProgressStyle};
+
+async fn build_command(
+    input: PathBuf,
+    output: Option<PathBuf>,
+    target: String,
+    optimization: String,
+    debug: bool,
+    verbose: bool,
+) -> Result<()> {
+    let formatter = OutputFormatter::new(verbose, false);
+    
+    formatter.step("Building", &format!("Compiling {}", input.display()));
+    
+    // Create progress bar for compilation phases
+    let pb = ProgressBar::new(4);
+    pb.set_style(
+        ProgressStyle::default_bar()
+            .template("{spinner:.green} [{elapsed_precise}] [{bar:40.cyan/blue}] {pos}/{len} {msg}")
+            .unwrap()
+            .progress_chars("█▉▊▋▌▍▎▏ ")
+    );
+    
+    // Phase 1: Read source
+    pb.set_message("Reading source file");
+    let source = tokio::fs::read_to_string(&input)
+        .await
+        .with_context(|| format!("Failed to read input file: {}", input.display()))?;
+    pb.inc(1);
+    
+    // Phase 2: Tokenize
+    pb.set_message("Tokenizing DSL");
+    let tokens = talkpp_compiler::tokenize(&source)
+        .with_context(|| "Failed to tokenize source")?;
+    pb.inc(1);
+    
+    // Phase 3: Parse
+    pb.set_message("Parsing AST");
+    let ast = talkpp_compiler::parse(tokens)
+        .with_context(|| "Failed to parse source")?;
+    pb.inc(1);
+    
+    // Phase 4: Generate code
+    pb.set_message("Generating code");
+    let config = create_compiler_config(target, optimization, debug)?;
+    let compiled_code = talkpp_compiler::generate(&ast, &config)
+        .with_context(|| "Failed to generate code")?;
+    pb.inc(1);
+    
+    pb.finish_with_message("Compilation completed");
+    
+    // Write output
+    let output_path = determine_output_path(input, output, &config.target_language);
+    tokio::fs::write(&output_path, compiled_code)
+        .await
+        .with_context(|| format!("Failed to write output to: {}", output_path.display()))?;
+    
+    formatter.success(&format!("Successfully compiled to: {}", output_path.display()));
+    
+    Ok(())
+}
+```
+
+## File Handling & Validation
+
+### Input Validation
+```rust
+fn validate_input_file(path: &PathBuf) -> Result<()> {
+    if !path.exists() {
+        return Err(anyhow::anyhow!(
+            "Input file does not exist: {}",
+            path.display()
+        ));
+    }
+    
+    if !path.is_file() {
+        return Err(anyhow::anyhow!(
+            "Input path is not a file: {}",
+            path.display()
+        ));
+    }
+    
+    match path.extension().and_then(|s| s.to_str()) {
+        Some("tpp") => Ok(()),
+        Some(ext) => Err(anyhow::anyhow!(
+            "Expected .tpp file, found .{} file: {}",
+            ext,
+            path.display()
+        )),
+        None => Err(anyhow::anyhow!(
+            "Input file has no extension, expected .tpp: {}",
+            path.display()
+        )),
+    }
+}
+
+fn determine_output_path(
+    input: PathBuf,
+    output: Option<PathBuf>,
+    target_language: &TargetLanguage,
+) -> PathBuf {
+    match output {
+        Some(path) => path,
+        None => {
+            let mut path = input;
+            let extension = match target_language {
+                TargetLanguage::Rust => "rs",
+                TargetLanguage::Python => "py",
+                TargetLanguage::JavaScript => "js",
+                TargetLanguage::TypeScript => "ts",
+                TargetLanguage::Bash => "sh",
+            };
+            path.set_extension(extension);
+            path
+        }
+    }
+}
+```
+
+## TalkppRun CLI Patterns
+
+### Simulation Command
+```rust
+#[derive(Subcommand)]
+enum RuntimeCommands {
+    /// Simulate function execution with dry-run
+    Simulate {
+        /// Compiled function file
+        #[arg(short = 'i', long = "input", value_name = "FILE")]
+        input: PathBuf,
+        
+        /// Environment variables file (.env)
+        #[arg(long = "secrets", value_name = "FILE")]
+        secrets: Option<PathBuf>,
+        
+        /// Mock external API calls
+        #[arg(long = "mock")]
+        mock: bool,
+        
+        /// Timeout in seconds
+        #[arg(long = "timeout", default_value = "30")]
+        timeout: u64,
+        
+        /// Event data as JSON string
+        #[arg(short = 'e', long = "event")]
+        event: Option<String>,
+        
+        /// Event data from file
+        #[arg(long = "event-file", value_name = "FILE")]
+        event_file: Option<PathBuf>,
+    },
+    
+    /// Execute a deployed function
+    Execute {
+        /// Function ID to execute
+        #[arg(short = 'f', long = "function-id")]
+        function_id: String,
+        
+        /// Input event data (JSON)
+        #[arg(short = 'e', long = "event")]
+        event: Option<String>,
+        
+        /// Event file path
+        #[arg(long = "event-file", value_name = "FILE")]
+        event_file: Option<PathBuf>,
+    },
+    
+    /// List deployed functions
+    List {
+        /// Show detailed information
+        #[arg(long = "detailed")]
+        detailed: bool,
+        
+        /// Filter by language
+        #[arg(long = "language")]
+        language: Option<String>,
+    },
+}
+```
+
+### Environment Loading
+```rust
+async fn load_environment(secrets_path: Option<PathBuf>) -> Result<()> {
+    if let Some(path) = secrets_path {
+        if path.exists() {
+            dotenv::from_path(&path)
+                .with_context(|| format!("Failed to load environment from: {}", path.display()))?;
+            
+            tracing::info!("Loaded environment variables from: {}", path.display());
+        } else {
+            return Err(anyhow::anyhow!(
+                "Secrets file does not exist: {}",
+                path.display()
+            ));
+        }
+    } else {
+        // Try to load from default .env file
+        if PathBuf::from(".env").exists() {
+            dotenv::dotenv().ok();
+            tracing::info!("Loaded environment variables from .env");
+        }
+    }
+    
+    Ok(())
+}
+```
+
+## Testing CLI Components
+
+### CLI Integration Tests  
+```rust
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use assert_cmd::Command;
+    use predicates::prelude::*;
+    use tempfile::TempDir;
+    
+    #[test]
+    fn test_build_command_success() {
+        let temp_dir = TempDir::new().unwrap();
+        let input_path = temp_dir.path().join("test.tpp");
+        let output_path = temp_dir.path().join("test.rs");
+        
+        // Write test DSL file
+        std::fs::write(&input_path, "if new user registers then validate email using SendGrid").unwrap();
+        
+        let mut cmd = Command::cargo_bin("talkppc").unwrap();
+        cmd.args(&[
+            "build",
+            "--input", input_path.to_str().unwrap(),
+            "--output", output_path.to_str().unwrap(),
+            "--target", "rust"
+        ]);
+        
+        cmd.assert()
+            .success()
+            .stdout(predicate::str::contains("Successfully compiled"));
+            
+        // Verify output file exists
+        assert!(output_path.exists());
+    }
+    
+    #[test]
+    fn test_check_command_invalid_syntax() {
+        let temp_dir = TempDir::new().unwrap();
+        let input_path = temp_dir.path().join("invalid.tpp");
+        
+        // Write invalid DSL
+        std::fs::write(&input_path, "if then validate email").unwrap();
+        
+        let mut cmd = Command::cargo_bin("talkppc").unwrap();
+        cmd.args(&["check", "--input", input_path.to_str().unwrap()]);
+        
+        cmd.assert()
+            .failure()
+            .stderr(predicate::str::contains("Syntax error"));
+    }
+    
+    #[test]
+    fn test_simulate_command() {
+        let temp_dir = TempDir::new().unwrap();
+        let function_path = temp_dir.path().join("function.rs");
+        
+        // Write minimal Rust function
+        std::fs::write(&function_path, r#"
+            pub async fn handler(event: serde_json::Value) -> serde_json::Value {
+                serde_json::json!({"success": true})
+            }
+        "#).unwrap();
+        
+        let mut cmd = Command::cargo_bin("talkpprun").unwrap();
+        cmd.args(&[
+            "simulate",
+            "--input", function_path.to_str().unwrap(),
+            "--mock",
+            "--event", r#"{"test": "data"}"#
+        ]);
+        
+        cmd.assert()
+            .success()
+            .stdout(predicate::str::contains("Simulation completed"));
+    }
+}
+```
+
+## Help Text & Documentation
+
+### Help Text Patterns
+```rust
+impl Commands {
+    fn help_examples() -> &'static str {
+        r#"
+Examples:
+  # Compile a Talk++ file to Rust
+  talkppc build -i hello.tpp -o hello.rs --target rust
+  
+  # Compile to Python with optimization
+  talkppc build -i workflow.tpp --target python --optimization release
+  
+  # Check syntax without compilation  
+  talkppc check -i script.tpp
+  
+  # Show supported languages
+  talkppc info
+        "#
+    }
+}
+
+// Add custom help text
+#[derive(Parser)]
+#[command(after_help = Commands::help_examples())]
+struct Cli {
+    // ... fields
+}
+```
+
+### Error Message Formatting
+```rust
+pub fn format_compiler_error(error: &talkpp_compiler::CompilerError) -> String {
+    match error {
+        CompilerError::ParseError { line, column, message } => {
+            format!(
+                "{} Parse error at {}:{}:\n  {}\n\n{} Check your DSL syntax and try again.",
+                "Error:".red().bold(),
+                line.to_string().yellow(),
+                column.to_string().yellow(),
+                message,
+                "Hint:".blue().bold()
+            )
+        }
+        CompilerError::LexicalError { position, message } => {
+            format!(
+                "{} Lexical error at position {}:\n  {}\n\n{} Check for invalid characters or tokens.",
+                "Error:".red().bold(),
+                position.to_string().yellow(),
+                message,
+                "Hint:".blue().bold()
+            )
+        }
+        _ => format!("{} {}", "Error:".red().bold(), error),
+    }
+}
+```
+
+---
+description:
+globs:
+alwaysApply: false
+---
