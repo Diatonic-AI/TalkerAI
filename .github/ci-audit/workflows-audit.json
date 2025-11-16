@@ -1,0 +1,218 @@
+{
+  "repo": "Diatonic-AI/TalkerAI",
+  "failedRunsCount": 36,
+  "topFailedRuns": [
+    {
+      "name": "\ud83d\udd10 Security Scanning & Compliance",
+      "url": "https://github.com/Diatonic-AI/TalkerAI/actions/runs/17902867672",
+      "createdAt": "2025-09-22T02:34:58Z",
+      "databaseId": 17902867672
+    },
+    {
+      "name": "\ud83d\udd10 Security Scanning & Compliance",
+      "url": "https://github.com/Diatonic-AI/TalkerAI/actions/runs/17887877711",
+      "createdAt": "2025-09-21T02:34:42Z",
+      "databaseId": 17887877711
+    },
+    {
+      "name": "\ud83d\udd10 Security Scanning & Compliance",
+      "url": "https://github.com/Diatonic-AI/TalkerAI/actions/runs/17874110830",
+      "createdAt": "2025-09-20T02:28:53Z",
+      "databaseId": 17874110830
+    },
+    {
+      "name": "\ud83d\udd10 Security Scanning & Compliance",
+      "url": "https://github.com/Diatonic-AI/TalkerAI/actions/runs/17846771743",
+      "createdAt": "2025-09-19T02:32:27Z",
+      "databaseId": 17846771743
+    },
+    {
+      "name": "\ud83d\udd10 Security Scanning & Compliance",
+      "url": "https://github.com/Diatonic-AI/TalkerAI/actions/runs/17816178179",
+      "createdAt": "2025-09-18T02:30:23Z",
+      "databaseId": 17816178179
+    },
+    {
+      "name": "\ud83d\udd10 Security Scanning & Compliance",
+      "url": "https://github.com/Diatonic-AI/TalkerAI/actions/runs/17784817384",
+      "createdAt": "2025-09-17T02:29:52Z",
+      "databaseId": 17784817384
+    },
+    {
+      "name": "\ud83d\udd10 Security Scanning & Compliance",
+      "url": "https://github.com/Diatonic-AI/TalkerAI/actions/runs/17752576324",
+      "createdAt": "2025-09-16T02:29:59Z",
+      "databaseId": 17752576324
+    },
+    {
+      "name": "\ud83d\udd10 Security Scanning & Compliance",
+      "url": "https://github.com/Diatonic-AI/TalkerAI/actions/runs/17720495393",
+      "createdAt": "2025-09-15T02:34:36Z",
+      "databaseId": 17720495393
+    },
+    {
+      "name": "\ud83d\udd10 Security Scanning & Compliance",
+      "url": "https://github.com/Diatonic-AI/TalkerAI/actions/runs/17705251325",
+      "createdAt": "2025-09-14T02:32:52Z",
+      "databaseId": 17705251325
+    },
+    {
+      "name": "\ud83d\udd10 Security Scanning & Compliance",
+      "url": "https://github.com/Diatonic-AI/TalkerAI/actions/runs/17690445352",
+      "createdAt": "2025-09-13T02:25:08Z",
+      "databaseId": 17690445352
+    },
+    {
+      "name": "\ud83d\udd10 Security Scanning & Compliance",
+      "url": "https://github.com/Diatonic-AI/TalkerAI/actions/runs/17662737635",
+      "createdAt": "2025-09-12T02:29:34Z",
+      "databaseId": 17662737635
+    },
+    {
+      "name": "\ud83d\udd10 Security Scanning & Compliance",
+      "url": "https://github.com/Diatonic-AI/TalkerAI/actions/runs/17632240144",
+      "createdAt": "2025-09-11T02:31:50Z",
+      "databaseId": 17632240144
+    },
+    {
+      "name": "\ud83d\udd10 Security Scanning & Compliance",
+      "url": "https://github.com/Diatonic-AI/TalkerAI/actions/runs/17601299125",
+      "createdAt": "2025-09-10T02:29:45Z",
+      "databaseId": 17601299125
+    },
+    {
+      "name": "\ud83d\udd10 Security Scanning & Compliance",
+      "url": "https://github.com/Diatonic-AI/TalkerAI/actions/runs/17569970123",
+      "createdAt": "2025-09-09T02:32:43Z",
+      "databaseId": 17569970123
+    },
+    {
+      "name": "\ud83d\udd10 Security Scanning & Compliance",
+      "url": "https://github.com/Diatonic-AI/TalkerAI/actions/runs/17537951249",
+      "createdAt": "2025-09-08T02:34:27Z",
+      "databaseId": 17537951249
+    },
+    {
+      "name": "\ud83d\udd10 Security Scanning & Compliance",
+      "url": "https://github.com/Diatonic-AI/TalkerAI/actions/runs/17522704638",
+      "createdAt": "2025-09-07T02:32:56Z",
+      "databaseId": 17522704638
+    },
+    {
+      "name": "\ud83d\udd10 Security Scanning & Compliance",
+      "url": "https://github.com/Diatonic-AI/TalkerAI/actions/runs/17508757639",
+      "createdAt": "2025-09-06T02:28:52Z",
+      "databaseId": 17508757639
+    },
+    {
+      "name": "\ud83d\udd10 Security Scanning & Compliance",
+      "url": "https://github.com/Diatonic-AI/TalkerAI/actions/runs/17481982090",
+      "createdAt": "2025-09-05T02:31:16Z",
+      "databaseId": 17481982090
+    },
+    {
+      "name": "\ud83d\udd10 Security Scanning & Compliance",
+      "url": "https://github.com/Diatonic-AI/TalkerAI/actions/runs/17451511737",
+      "createdAt": "2025-09-04T02:29:51Z",
+      "databaseId": 17451511737
+    },
+    {
+      "name": "\ud83d\udd10 Security Scanning & Compliance",
+      "url": "https://github.com/Diatonic-AI/TalkerAI/actions/runs/17421279224",
+      "createdAt": "2025-09-03T02:29:23Z",
+      "databaseId": 17421279224
+    }
+  ],
+  "longestJobs": [
+    {
+      "runUrl": "https://github.com/Diatonic-AI/TalkerAI/actions/runs/17569970123",
+      "jobName": "\ud83d\udce6 Dependency Vulnerability Scan (rust)",
+      "durationMinutes": 0.98,
+      "labels": [
+        "ubuntu-latest"
+      ],
+      "conclusion": "cancelled"
+    },
+    {
+      "runUrl": "https://github.com/Diatonic-AI/TalkerAI/actions/runs/17752576324",
+      "jobName": "\ud83d\udce6 Dependency Vulnerability Scan (rust)",
+      "durationMinutes": 0.88,
+      "labels": [
+        "ubuntu-latest"
+      ],
+      "conclusion": "cancelled"
+    },
+    {
+      "runUrl": "https://github.com/Diatonic-AI/TalkerAI/actions/runs/17662737635",
+      "jobName": "\ud83d\udce6 Dependency Vulnerability Scan (rust)",
+      "durationMinutes": 0.88,
+      "labels": [
+        "ubuntu-latest"
+      ],
+      "conclusion": "cancelled"
+    },
+    {
+      "runUrl": "https://github.com/Diatonic-AI/TalkerAI/actions/runs/17887877711",
+      "jobName": "\ud83d\udce6 Dependency Vulnerability Scan (rust)",
+      "durationMinutes": 0.87,
+      "labels": [
+        "ubuntu-latest"
+      ],
+      "conclusion": "cancelled"
+    },
+    {
+      "runUrl": "https://github.com/Diatonic-AI/TalkerAI/actions/runs/17537951249",
+      "jobName": "\ud83d\udce6 Dependency Vulnerability Scan (rust)",
+      "durationMinutes": 0.87,
+      "labels": [
+        "ubuntu-latest"
+      ],
+      "conclusion": "cancelled"
+    },
+    {
+      "runUrl": "https://github.com/Diatonic-AI/TalkerAI/actions/runs/17846771743",
+      "jobName": "\ud83d\udce6 Dependency Vulnerability Scan (rust)",
+      "durationMinutes": 0.85,
+      "labels": [
+        "ubuntu-latest"
+      ],
+      "conclusion": "cancelled"
+    },
+    {
+      "runUrl": "https://github.com/Diatonic-AI/TalkerAI/actions/runs/17705251325",
+      "jobName": "\ud83d\udce6 Dependency Vulnerability Scan (rust)",
+      "durationMinutes": 0.85,
+      "labels": [
+        "ubuntu-latest"
+      ],
+      "conclusion": "cancelled"
+    },
+    {
+      "runUrl": "https://github.com/Diatonic-AI/TalkerAI/actions/runs/17902867672",
+      "jobName": "\ud83d\udce6 Dependency Vulnerability Scan (rust)",
+      "durationMinutes": 0.83,
+      "labels": [
+        "ubuntu-latest"
+      ],
+      "conclusion": "cancelled"
+    },
+    {
+      "runUrl": "https://github.com/Diatonic-AI/TalkerAI/actions/runs/17720495393",
+      "jobName": "\ud83d\udcdc License Compliance Scan",
+      "durationMinutes": 0.83,
+      "labels": [
+        "ubuntu-latest"
+      ],
+      "conclusion": "failure"
+    },
+    {
+      "runUrl": "https://github.com/Diatonic-AI/TalkerAI/actions/runs/17705251325",
+      "jobName": "\ud83d\udd0d Static Application Security Testing",
+      "durationMinutes": 0.83,
+      "labels": [
+        "ubuntu-latest"
+      ],
+      "conclusion": "failure"
+    }
+  ]
+}
